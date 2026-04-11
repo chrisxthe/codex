@@ -71,6 +71,8 @@ pub(crate) struct RateLimitWindowDisplay {
     pub used_percent: f64,
     /// Human-readable local reset time.
     pub resets_at: Option<String>,
+    /// Raw reset timestamp in Unix seconds so countdowns can be recomputed at render time.
+    pub resets_at_unix: Option<i64>,
     /// Window length in minutes when provided by the server.
     pub window_minutes: Option<i64>,
 }
@@ -86,8 +88,65 @@ impl RateLimitWindowDisplay {
         Self {
             used_percent: f64::from(window.used_percent),
             resets_at,
+            resets_at_unix: window.resets_at,
             window_minutes: window.window_duration_mins,
         }
+    }
+}
+
+pub(crate) fn format_quota_summary(
+    primary: Option<&RateLimitWindowDisplay>,
+    secondary: Option<&RateLimitWindowDisplay>,
+    now: DateTime<Local>,
+) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(part) = format_quota_summary_window(primary, "5h", now) {
+        parts.push(part);
+    }
+    if let Some(part) = format_quota_summary_window(secondary, "wk", now) {
+        parts.push(part);
+    }
+    (!parts.is_empty()).then(|| parts.join(" "))
+}
+
+fn format_quota_summary_window(
+    window: Option<&RateLimitWindowDisplay>,
+    label: &str,
+    now: DateTime<Local>,
+) -> Option<String> {
+    let window = window?;
+    let remaining = (100.0f64 - window.used_percent).clamp(0.0f64, 100.0f64);
+    let countdown = window
+        .resets_at_unix
+        .and_then(|seconds| format_reset_countdown(seconds, now))?;
+    Some(format!("{label}:{remaining:.0}%({countdown})"))
+}
+
+fn format_reset_countdown(resets_at_unix: i64, now: DateTime<Local>) -> Option<String> {
+    let diff_seconds = resets_at_unix.saturating_sub(now.timestamp());
+    if diff_seconds <= 0 {
+        return Some("0m".to_string());
+    }
+
+    let total_minutes = (diff_seconds + 59) / 60;
+    let days = total_minutes / (24 * 60);
+    let hours = (total_minutes % (24 * 60)) / 60;
+    let minutes = total_minutes % 60;
+
+    if days > 0 {
+        if hours > 0 {
+            Some(format!("{days}d{hours}h"))
+        } else {
+            Some(format!("{days}d"))
+        }
+    } else if hours > 0 {
+        if minutes > 0 {
+            Some(format!("{hours}h{minutes}m"))
+        } else {
+            Some(format!("{hours}h"))
+        }
+    } else {
+        Some(format!("{total_minutes}m"))
     }
 }
 
@@ -440,13 +499,16 @@ mod tests {
     use super::RateLimitWindowDisplay;
     use super::StatusRateLimitData;
     use super::compose_rate_limit_data_many;
+    use super::format_quota_summary;
     use chrono::Local;
+    use chrono::TimeZone;
     use pretty_assertions::assert_eq;
 
     fn window(used_percent: f64) -> RateLimitWindowDisplay {
         RateLimitWindowDisplay {
             used_percent,
             resets_at: Some("soon".to_string()),
+            resets_at_unix: None,
             window_minutes: Some(300),
         }
     }
@@ -509,12 +571,14 @@ mod tests {
             primary: Some(RateLimitWindowDisplay {
                 used_percent: 20.0,
                 resets_at: Some("soon".to_string()),
+                resets_at_unix: None,
                 window_minutes: Some(60),
             }),
             secondary: Some(RateLimitWindowDisplay {
                 used_percent: 40.0,
                 resets_at: Some("later".to_string()),
                 window_minutes: Some(2 * 60),
+                resets_at_unix: None,
             }),
             credits: None,
             individual_limit: None,
@@ -532,6 +596,31 @@ mod tests {
                 "Usage limit".to_string(),
                 "Secondary usage limit".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn quota_summary_formats_remaining_percent_with_countdowns() {
+        let now = Local
+            .with_ymd_and_hms(2026, 4, 11, 15, 0, 0)
+            .single()
+            .expect("timestamp");
+        let primary = RateLimitWindowDisplay {
+            used_percent: 13.0,
+            resets_at: Some("17:01".to_string()),
+            resets_at_unix: Some(now.timestamp() + (2 * 60 * 60) + 60),
+            window_minutes: Some(300),
+        };
+        let secondary = RateLimitWindowDisplay {
+            used_percent: 50.0,
+            resets_at: Some("13:00 on 17 Apr".to_string()),
+            resets_at_unix: Some(now.timestamp() + (5 * 24 * 60 * 60) + (22 * 60 * 60)),
+            window_minutes: Some(10_080),
+        };
+
+        assert_eq!(
+            format_quota_summary(Some(&primary), Some(&secondary), now),
+            Some("5h:87%(2h1m) wk:50%(5d22h)".to_string())
         );
     }
 }

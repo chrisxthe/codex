@@ -68,6 +68,7 @@ use crate::status::RateLimitWindowDisplay;
 use crate::status::StatusAccountDisplay;
 use crate::status::StatusHistoryHandle;
 use crate::status::format_directory_display;
+use crate::status::format_quota_summary;
 use crate::status::format_tokens_compact;
 use crate::status::rate_limit_snapshot_display_for_limit;
 use crate::terminal_hyperlinks::HyperlinkLine;
