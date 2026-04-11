@@ -12,7 +12,6 @@
 //! - Model information (name, reasoning level, provider)
 //! - Named configuration profile
 //! - Directory paths (current dir, project root)
-//! - Machine hostname
 //! - Git information (branch name)
 //! - Permissions profile
 //! - Approval mode
@@ -76,9 +75,6 @@ pub(crate) enum StatusLineItem {
     )]
     ProjectRoot,
 
-    /// Hostname of the machine running Codex.
-    Hostname,
-
     /// Current git branch name (if in a repository).
     GitBranch,
 
@@ -102,6 +98,10 @@ pub(crate) enum StatusLineItem {
     /// Percentage of context window remaining.
     ContextRemaining,
 
+    /// Percentage of context window remaining.
+    #[strum(to_string = "context-remaining-percent")]
+    ContextRemainingPercent,
+
     /// Percentage of context window used.
     ///
     /// Also accepts the legacy `context-usage` config value.
@@ -113,6 +113,9 @@ pub(crate) enum StatusLineItem {
 
     /// Remaining usage on the secondary rate limit.
     WeeklyLimit,
+
+    /// Combined short summary of quota usage and reset countdowns.
+    QuotaSummary,
 
     /// Codex application version.
     CodexVersion,
@@ -128,12 +131,6 @@ pub(crate) enum StatusLineItem {
 
     /// Total output tokens generated.
     TotalOutputTokens,
-
-    /// Estimated credits attributed directly to the current enterprise thread.
-    ThreadCredits,
-
-    /// Estimated dollar cost attributed directly to the current enterprise thread.
-    EstimatedThreadCost,
 
     /// Full thread UUID.
     #[strum(to_string = "thread-id", serialize = "session-id")]
@@ -181,7 +178,6 @@ impl StatusLineItem {
             StatusLineItem::Provider => "Model provider for the active thread",
             StatusLineItem::CurrentDir => "Current working directory",
             StatusLineItem::ProjectRoot => "Project name (omitted when unavailable)",
-            StatusLineItem::Hostname => "Current machine hostname (omitted when unavailable)",
             StatusLineItem::GitBranch => "Current Git branch (omitted when unavailable)",
             StatusLineItem::PullRequestNumber => {
                 "Open pull request number for the current branch (omitted when unavailable)"
@@ -195,6 +191,9 @@ impl StatusLineItem {
             StatusLineItem::ContextRemaining => {
                 "Percentage of context window remaining (omitted when unknown)"
             }
+            StatusLineItem::ContextRemainingPercent => {
+                "Percentage of context window remaining (omitted when unknown)"
+            }
             StatusLineItem::ContextUsed => {
                 "Percentage of context window used (omitted when unknown)"
             }
@@ -204,6 +203,9 @@ impl StatusLineItem {
             StatusLineItem::WeeklyLimit => {
                 "Remaining usage on the secondary usage limit (omitted when unavailable)"
             }
+            StatusLineItem::QuotaSummary => {
+                "Compact summary of 5-hour and weekly quota remaining with reset countdowns"
+            }
             StatusLineItem::CodexVersion => "Codex application version",
             StatusLineItem::ContextWindowSize => {
                 "Total context window size in tokens (omitted when unknown)"
@@ -211,12 +213,6 @@ impl StatusLineItem {
             StatusLineItem::UsedTokens => "Total tokens used in session (omitted when zero)",
             StatusLineItem::TotalInputTokens => "Total input tokens used in session",
             StatusLineItem::TotalOutputTokens => "Total output tokens used in session",
-            StatusLineItem::ThreadCredits => {
-                "Estimated current-thread credits (Enterprise workspaces only; omitted when unavailable)"
-            }
-            StatusLineItem::EstimatedThreadCost => {
-                "Estimated current-thread cost in USD (Enterprise workspaces only; omitted when unavailable)"
-            }
             StatusLineItem::SessionId => "Current thread identifier (omitted until thread starts)",
             StatusLineItem::FastMode => "Effective processing tier for the current model",
             StatusLineItem::Daybreak => "Whether Daybreak is enabled for this thread",
@@ -243,7 +239,6 @@ impl StatusLineItem {
             StatusLineItem::Provider => StatusSurfacePreviewItem::Provider,
             StatusLineItem::CurrentDir => StatusSurfacePreviewItem::CurrentDir,
             StatusLineItem::ProjectRoot => StatusSurfacePreviewItem::ProjectRoot,
-            StatusLineItem::Hostname => StatusSurfacePreviewItem::Hostname,
             StatusLineItem::GitBranch => StatusSurfacePreviewItem::GitBranch,
             StatusLineItem::PullRequestNumber => StatusSurfacePreviewItem::PullRequestNumber,
             StatusLineItem::BranchChanges => StatusSurfacePreviewItem::BranchChanges,
@@ -251,16 +246,18 @@ impl StatusLineItem {
             StatusLineItem::Permissions => StatusSurfacePreviewItem::Permissions,
             StatusLineItem::ApprovalMode => StatusSurfacePreviewItem::ApprovalMode,
             StatusLineItem::ContextRemaining => StatusSurfacePreviewItem::ContextRemaining,
+            StatusLineItem::ContextRemainingPercent => {
+                StatusSurfacePreviewItem::ContextRemainingPercent
+            }
             StatusLineItem::ContextUsed => StatusSurfacePreviewItem::ContextUsed,
             StatusLineItem::FiveHourLimit => StatusSurfacePreviewItem::FiveHourLimit,
             StatusLineItem::WeeklyLimit => StatusSurfacePreviewItem::WeeklyLimit,
+            StatusLineItem::QuotaSummary => StatusSurfacePreviewItem::QuotaSummary,
             StatusLineItem::CodexVersion => StatusSurfacePreviewItem::CodexVersion,
             StatusLineItem::ContextWindowSize => StatusSurfacePreviewItem::ContextWindowSize,
             StatusLineItem::UsedTokens => StatusSurfacePreviewItem::UsedTokens,
             StatusLineItem::TotalInputTokens => StatusSurfacePreviewItem::TotalInputTokens,
             StatusLineItem::TotalOutputTokens => StatusSurfacePreviewItem::TotalOutputTokens,
-            StatusLineItem::ThreadCredits => StatusSurfacePreviewItem::ThreadCredits,
-            StatusLineItem::EstimatedThreadCost => StatusSurfacePreviewItem::EstimatedThreadCost,
             StatusLineItem::SessionId => StatusSurfacePreviewItem::SessionId,
             StatusLineItem::FastMode => StatusSurfacePreviewItem::FastMode,
             StatusLineItem::Daybreak => StatusSurfacePreviewItem::Daybreak,
@@ -474,7 +471,7 @@ mod tests {
     }
 
     #[test]
-    fn context_remaining_is_selectable_id() {
+    fn context_remaining_is_separate_selectable_id() {
         assert_eq!(
             "context-remaining".parse::<StatusLineItem>(),
             Ok(StatusLineItem::ContextRemaining)
@@ -486,14 +483,14 @@ mod tests {
     }
 
     #[test]
-    fn thread_usage_items_are_independently_selectable() {
+    fn context_remaining_percent_is_separate_selectable_id() {
         assert_eq!(
-            "thread-credits".parse::<StatusLineItem>(),
-            Ok(StatusLineItem::ThreadCredits)
+            StatusLineItem::ContextRemainingPercent.to_string(),
+            "context-remaining-percent"
         );
         assert_eq!(
-            "estimated-thread-cost".parse::<StatusLineItem>(),
-            Ok(StatusLineItem::EstimatedThreadCost)
+            "context-remaining-percent".parse::<StatusLineItem>(),
+            Ok(StatusLineItem::ContextRemainingPercent)
         );
     }
 
@@ -546,6 +543,40 @@ mod tests {
         assert_eq!(
             "status".parse::<StatusLineItem>(),
             Ok(StatusLineItem::Status)
+        );
+    }
+
+    #[test]
+    fn quota_summary_parses_and_renders_in_preview() {
+        assert_eq!(StatusLineItem::QuotaSummary.to_string(), "quota-summary");
+        assert_eq!(
+            "quota-summary".parse::<StatusLineItem>(),
+            Ok(StatusLineItem::QuotaSummary)
+        );
+
+        let preview_data = StatusSurfacePreviewData::from_iter([(
+            StatusLineItem::QuotaSummary.preview_item(),
+            "5h:87%(2h1m) wk:50%(5d22h)".to_string(),
+        )]);
+        let items = [MultiSelectItem {
+            id: StatusLineItem::QuotaSummary.to_string(),
+            name: String::new(),
+            description: None,
+            enabled: true,
+            orderable: true,
+            section_break_after: false,
+        }];
+
+        assert_eq!(
+            line_text(
+                preview_data.status_line_for_items(
+                    items
+                        .iter()
+                        .filter_map(|item| item.id.parse::<StatusLineItem>().ok()),
+                    /*use_theme_colors*/ true,
+                )
+            ),
+            Some("5h:87%(2h1m) wk:50%(5d22h)".to_string())
         );
     }
 
@@ -620,7 +651,7 @@ mod tests {
     #[test]
     fn preview_uses_placeholders_when_runtime_values_are_missing() {
         let preview_data = StatusSurfacePreviewData::from_iter([(
-            StatusSurfacePreviewItem::Model,
+            StatusLineItem::ModelName.preview_item(),
             "gpt-5".to_string(),
         )]);
         let items = [
@@ -732,64 +763,6 @@ mod tests {
         );
 
         assert_snapshot!(render_lines(&view, /*width*/ 72));
-    }
-
-    #[test]
-    fn setup_view_snapshot_includes_thread_usage_items() {
-        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
-        let view = StatusLineSetupView::new(
-            Some(&[
-                StatusLineItem::ThreadCredits.to_string(),
-                StatusLineItem::EstimatedThreadCost.to_string(),
-            ]),
-            /*use_theme_colors*/ true,
-            StatusSurfacePreviewData::from_iter([
-                (
-                    StatusLineItem::ThreadCredits.preview_item(),
-                    "5.2 credits".to_string(),
-                ),
-                (
-                    StatusLineItem::EstimatedThreadCost.preview_item(),
-                    "~$1.82".to_string(),
-                ),
-            ]),
-            AppEventSender::new(tx_raw),
-            crate::keymap::RuntimeKeymap::defaults().list,
-        );
-
-        assert_snapshot!(render_lines(&view, /*width*/ 100));
-    }
-
-    #[test]
-    fn setup_view_snapshot_includes_hostname() {
-        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
-        let view = StatusLineSetupView::new(
-            Some(&[
-                StatusLineItem::Hostname.to_string(),
-                StatusLineItem::CurrentDir.to_string(),
-            ]),
-            /*use_theme_colors*/ true,
-            StatusSurfacePreviewData::from_iter([
-                (
-                    StatusLineItem::Hostname.preview_item(),
-                    "ssh-build-01.example.com".to_string(),
-                ),
-                (
-                    StatusLineItem::CurrentDir.preview_item(),
-                    "~/codex-rs".to_string(),
-                ),
-            ]),
-            AppEventSender::new(tx_raw),
-            crate::keymap::RuntimeKeymap::defaults().list,
-        );
-
-        assert_snapshot!(
-            render_lines(&view, /*width*/ 100)
-                .lines()
-                .map(str::trim_end)
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
     }
 
     fn render_lines(view: &StatusLineSetupView, width: u16) -> String {
