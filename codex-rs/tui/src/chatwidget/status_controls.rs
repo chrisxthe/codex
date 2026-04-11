@@ -431,6 +431,15 @@ impl ChatWidget {
         Some(format!("{label} {remaining:.0}% left"))
     }
 
+    pub(super) fn status_line_quota_summary(&self) -> Option<String> {
+        let snapshot = self.rate_limit_snapshots_by_limit_id.get("codex")?;
+        format_quota_summary(
+            snapshot.primary.as_ref(),
+            snapshot.secondary.as_ref(),
+            Local::now(),
+        )
+    }
+
     pub(super) fn status_line_reasoning_effort_label(
         effort: Option<&ReasoningEffortConfig>,
     ) -> String {

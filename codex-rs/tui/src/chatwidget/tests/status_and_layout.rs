@@ -3993,6 +3993,34 @@ async fn status_line_model_with_reasoning_includes_fast_for_fast_capable_models(
 }
 
 #[tokio::test]
+async fn status_line_quota_summary_includes_reset_countdowns() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_status_line = Some(vec!["quota-summary".to_string()]);
+    let now = chrono::Utc::now().timestamp();
+    chat.on_rate_limit_snapshot(Some(RateLimitSnapshot {
+        limit_id: None,
+        limit_name: None,
+        primary: Some(RateLimitWindow {
+            used_percent: 13.0,
+            window_minutes: Some(300),
+            resets_at: Some(now + (2 * 60 * 60) + 60),
+        }),
+        secondary: Some(RateLimitWindow {
+            used_percent: 50.0,
+            window_minutes: Some(10_080),
+            resets_at: Some(now + (5 * 24 * 60 * 60) + (22 * 60 * 60)),
+        }),
+        credits: None,
+        plan_type: Some(PlanType::Plus),
+    }));
+
+    assert_eq!(
+        status_line_text(&chat),
+        Some("5h:87%(2h1m) wk:50%(5d22h)".to_string())
+    );
+}
+
+#[tokio::test]
 async fn terminal_title_model_updates_on_model_change_without_manual_refresh() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
     chat.local_settings.tui.terminal_title = Some(vec!["model".to_string()]);
