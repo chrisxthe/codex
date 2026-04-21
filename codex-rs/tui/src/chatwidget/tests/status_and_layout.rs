@@ -4012,6 +4012,7 @@ async fn status_line_quota_summary_includes_reset_countdowns() {
         }),
         credits: None,
         plan_type: Some(PlanType::Plus),
+        rate_limit_reached_type: None,
     }));
 
     assert_eq!(
