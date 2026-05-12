@@ -4001,13 +4001,13 @@ async fn status_line_quota_summary_includes_reset_countdowns() {
         limit_id: None,
         limit_name: None,
         primary: Some(RateLimitWindow {
-            used_percent: 13.0,
-            window_minutes: Some(300),
+            used_percent: 13,
+            window_duration_mins: Some(300),
             resets_at: Some(now + (2 * 60 * 60) + 60),
         }),
         secondary: Some(RateLimitWindow {
-            used_percent: 50.0,
-            window_minutes: Some(10_080),
+            used_percent: 50,
+            window_duration_mins: Some(10_080),
             resets_at: Some(now + (5 * 24 * 60 * 60) + (22 * 60 * 60)),
         }),
         credits: None,
