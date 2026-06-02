@@ -4011,6 +4011,7 @@ async fn status_line_quota_summary_includes_reset_countdowns() {
             resets_at: Some(now + (5 * 24 * 60 * 60) + (22 * 60 * 60)),
         }),
         credits: None,
+        individual_limit: None,
         plan_type: Some(PlanType::Plus),
         rate_limit_reached_type: None,
     }));
