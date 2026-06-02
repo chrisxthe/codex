@@ -72,6 +72,7 @@ fn stale_monthly_limit_marks_fresh_rolling_snapshot_stale() {
             used_percent: 20.0,
             resets_at_unix: None,
             resets_at: Some("soon".to_string()),
+            resets_at_unix: None,
             window_minutes: Some(300),
         }),
         secondary: None,
