@@ -111,10 +111,16 @@ pub(crate) fn format_quota_summary(
 
 fn format_quota_summary_window(
     window: Option<&RateLimitWindowDisplay>,
-    label: &str,
+    fallback_label: &str,
     now: DateTime<Local>,
 ) -> Option<String> {
     let window = window?;
+    let is_secondary = fallback_label == "wk";
+    let label = match limit_label_for_window(window.window_minutes, is_secondary).as_str() {
+        "weekly" => "wk".to_string(),
+        label if label == fallback_limit_label(is_secondary) => fallback_label.to_string(),
+        label => label.to_string(),
+    };
     let remaining = (100.0f64 - window.used_percent).clamp(0.0f64, 100.0f64);
     let countdown = window
         .resets_at_unix
@@ -621,6 +627,25 @@ mod tests {
         assert_eq!(
             format_quota_summary(Some(&primary), Some(&secondary), now),
             Some("5h:87%(2h1m) wk:50%(5d22h)".to_string())
+        );
+    }
+
+    #[test]
+    fn quota_summary_labels_weekly_window_in_primary_slot() {
+        let now = Local
+            .with_ymd_and_hms(2026, 7, 17, 12, 0, 0)
+            .single()
+            .expect("timestamp");
+        let weekly = RateLimitWindowDisplay {
+            used_percent: 25.0,
+            resets_at: Some("12:00 on 24 Jul".to_string()),
+            resets_at_unix: Some(now.timestamp() + (7 * 24 * 60 * 60)),
+            window_minutes: Some(10_080),
+        };
+
+        assert_eq!(
+            format_quota_summary(Some(&weekly), None, now),
+            Some("wk:75%(7d)".to_string())
         );
     }
 }

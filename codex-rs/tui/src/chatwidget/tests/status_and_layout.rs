@@ -4012,6 +4012,7 @@ async fn status_line_quota_summary_includes_reset_countdowns() {
         }),
         credits: None,
         individual_limit: None,
+        spend_control_reached: None,
         plan_type: Some(PlanType::Plus),
         rate_limit_reached_type: None,
     }));
@@ -4020,6 +4021,30 @@ async fn status_line_quota_summary_includes_reset_countdowns() {
         status_line_text(&chat),
         Some("5h:87%(2h1m) wk:50%(5d22h)".to_string())
     );
+}
+
+#[tokio::test]
+async fn status_line_quota_summary_labels_weekly_only_primary_window() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_status_line = Some(vec!["quota-summary".to_string()]);
+    let now = chrono::Utc::now().timestamp();
+    chat.on_rate_limit_snapshot(Some(RateLimitSnapshot {
+        limit_id: None,
+        limit_name: None,
+        primary: Some(RateLimitWindow {
+            used_percent: 25,
+            window_duration_mins: Some(10_080),
+            resets_at: Some(now + (7 * 24 * 60 * 60)),
+        }),
+        secondary: None,
+        credits: None,
+        individual_limit: None,
+        spend_control_reached: None,
+        plan_type: Some(PlanType::Plus),
+        rate_limit_reached_type: None,
+    }));
+
+    assert_eq!(status_line_text(&chat), Some("wk:75%(7d)".to_string()));
 }
 
 #[tokio::test]
