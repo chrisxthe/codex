@@ -4513,7 +4513,11 @@ impl Session {
             let state = self.state.lock().await;
             state.token_info_and_rate_limits()
         };
-        let event = EventMsg::TokenCount(TokenCountEvent { info, rate_limits });
+        let event = EventMsg::TokenCount(TokenCountEvent {
+            info,
+            rate_limits,
+            source_model: Some(turn_context.model_info.slug.clone()),
+        });
         self.send_event(turn_context, event).await;
     }
 

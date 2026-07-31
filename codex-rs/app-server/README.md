@@ -2596,7 +2596,7 @@ Codex supports these authentication modes. The current mode is surfaced in `acco
 - `account/rateLimitResetCredit/consume` — consume one earned reset using a caller-provided idempotency key, optionally selecting a reset-credit ID returned by `account/rateLimits/read`.
 - `account/usage/read` — fetch ChatGPT account token-activity summary and daily buckets, or pass a valid thread UUID as `threadId` to read estimated credits, optional cost, and usage breakdowns for one thread using the app-server's active account. The optional `threadUsage` response field is absent on older servers and `null` when the billing route is unavailable.
 - `account/workspaceMessages/read` — fetch active workspace messages, including workspace notification headlines when available.
-- `account/rateLimits/updated` (notify) — emitted whenever a user's ChatGPT rate limits change. This is a sparse rolling update; merge available values into the most recent `account/rateLimits/read` response or refetch that snapshot.
+- `account/rateLimits/updated` (notify) — emitted whenever a user's ChatGPT rate limits change. This is a sparse rolling update; merge available values into the most recent `account/rateLimits/read` response or refetch that snapshot. When known, `sourceThreadId` and `sourceModel` identify the thread and model whose response produced the update; older producers may report either field as `null`.
   `spendControlReached` is `true` or `false` when the backend reports spend-control state; `null` means unavailable and must not clear a previously observed value in a sparse update.
 - `account/sendAddCreditsNudgeEmail` — ask ChatGPT to email the workspace owner about depleted credits or a reached usage limit.
 - `mcpServer/oauthLogin/completed` (notify) — emitted after a `mcpServer/oauth/login` flow finishes for a server; payload includes `{ name, threadId, success, error? }`.
@@ -2838,7 +2838,7 @@ details remain available; older servers ignore it and keep their existing behavi
     }
   }
 }
-{ "method": "account/rateLimits/updated", "params": { "rateLimits": { … } } }
+{ "method": "account/rateLimits/updated", "params": { "rateLimits": { … }, "sourceThreadId": "thread-id", "sourceModel": "gpt-5.3-codex-spark" } }
 ```
 
 Field notes:

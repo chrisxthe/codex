@@ -849,6 +849,8 @@ mod tests {
                     plan_type: Some(PlanType::SelfServeBusinessProLite),
                     rate_limit_reached_type: None,
                 },
+                source_thread_id: Some("thread-123".to_string()),
+                source_model: Some("gpt-5.3-codex-spark".to_string()),
             });
 
         assert_eq!(
@@ -870,7 +872,9 @@ mod tests {
                         "spendControlReached": null,
                         "planType": "self_serve_business_prolite",
                         "rateLimitReachedType": null
-                    }
+                    },
+                    "sourceThreadId": "thread-123",
+                    "sourceModel": "gpt-5.3-codex-spark"
                 },
             }),
             serde_json::to_value(notification)

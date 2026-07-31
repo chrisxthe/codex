@@ -1681,7 +1681,11 @@ async fn handle_token_count_event(
     token_count_event: TokenCountEvent,
     outgoing: &ThreadScopedOutgoingMessageSender,
 ) {
-    let TokenCountEvent { info, rate_limits } = token_count_event;
+    let TokenCountEvent {
+        info,
+        rate_limits,
+        source_model,
+    } = token_count_event;
     if let Some(token_usage) = info.map(ThreadTokenUsage::from) {
         let notification = ThreadTokenUsageUpdatedNotification {
             thread_id: conversation_id.to_string(),
@@ -1697,6 +1701,8 @@ async fn handle_token_count_event(
             .send_server_notification(ServerNotification::AccountRateLimitsUpdated(
                 AccountRateLimitsUpdatedNotification {
                     rate_limits: rate_limits.into(),
+                    source_thread_id: Some(conversation_id.to_string()),
+                    source_model,
                 },
             ))
             .await;
@@ -3871,6 +3877,7 @@ mod tests {
             TokenCountEvent {
                 info: Some(info),
                 rate_limits: Some(rate_limits),
+                source_model: Some("gpt-5.3-codex-spark".to_string()),
             },
             &outgoing,
         )
@@ -3897,6 +3904,11 @@ mod tests {
                 assert_eq!(payload.rate_limits.limit_name, None);
                 assert!(payload.rate_limits.primary.is_some());
                 assert!(payload.rate_limits.credits.is_some());
+                assert_eq!(
+                    payload.source_thread_id.as_deref(),
+                    Some(conversation_id.to_string().as_str())
+                );
+                assert_eq!(payload.source_model.as_deref(), Some("gpt-5.3-codex-spark"));
             }
             other => bail!("unexpected notification: {other:?}"),
         }
@@ -3924,6 +3936,7 @@ mod tests {
             TokenCountEvent {
                 info: None,
                 rate_limits: None,
+                source_model: None,
             },
             &outgoing,
         )
