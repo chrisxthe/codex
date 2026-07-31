@@ -656,6 +656,10 @@ pub struct GatewayOAuthCancelResponse {}
 /// does not clear a previously observed value.
 pub struct AccountRateLimitsUpdatedNotification {
     pub rate_limits: RateLimitSnapshot,
+    /// Thread whose response produced this sparse update, when known.
+    pub source_thread_id: Option<String>,
+    /// Model whose response produced this sparse update, when known.
+    pub source_model: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

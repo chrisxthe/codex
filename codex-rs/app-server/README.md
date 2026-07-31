@@ -454,3 +454,14 @@ credential discovery/signing, are disabled while restrictions apply. Supported
 HTTP, WebSocket, and code-mode gRPC requests use the shared destination checks.
 User-directed Git, SSH, shell, and other subprocess traffic retain their existing
 execution and sandbox policies.
+
+# Rate-limit update provenance
+
+`account/rateLimits/updated` is a sparse rolling update. Merge available values
+into the most recent `account/rateLimits/read` response or refetch that snapshot.
+When known, `sourceThreadId` and `sourceModel` identify the thread and model whose
+response produced the update; older producers may report either field as `null`.
+
+```json
+{ "method": "account/rateLimits/updated", "params": { "rateLimits": { }, "sourceThreadId": "thread-id", "sourceModel": "gpt-5.3-codex-spark" } }
+```
