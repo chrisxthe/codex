@@ -525,6 +525,8 @@ impl ChatWidget {
         self.pending_usage_menu_rate_limit_request_id = None;
         self.available_rate_limit_reset_credits = None;
         self.rate_limit_snapshots_by_limit_id.clear();
+        self.rate_limit_snapshots_by_model.clear();
+        self.latest_spark_rate_limit_model = None;
         self.clear_pending_rate_limit_reset_hint();
         self.bottom_pane.dismiss_view_by_id(USAGE_MENU_VIEW_ID);
         self.bottom_pane

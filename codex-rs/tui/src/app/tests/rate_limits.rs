@@ -58,15 +58,69 @@ async fn deliver_rolling_rate_limit_snapshot(
     app_server: &AppServerSession,
     snapshot: RateLimitSnapshot,
 ) {
+    deliver_attributed_rolling_rate_limit_snapshot(
+        app, app_server, snapshot, /*source_thread_id*/ None, /*source_model*/ None,
+    )
+    .await;
+}
+
+async fn deliver_attributed_rolling_rate_limit_snapshot(
+    app: &mut App,
+    app_server: &AppServerSession,
+    snapshot: RateLimitSnapshot,
+    source_thread_id: Option<String>,
+    source_model: Option<String>,
+) {
     app.handle_app_server_event(
         app_server,
         codex_app_server_client::AppServerEvent::ServerNotification(Box::new(
             ServerNotification::AccountRateLimitsUpdated(AccountRateLimitsUpdatedNotification {
                 rate_limits: snapshot,
+                source_thread_id,
+                source_model,
             }),
         )),
     )
     .await;
+}
+
+#[tokio::test]
+async fn background_model_quota_notification_does_not_replace_foreground_meter() -> Result<()> {
+    let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    app.chat_widget.set_model("gpt-5.6-sol");
+    let app_server = crate::start_embedded_app_server_for_picker(app.chat_widget.config_ref())
+        .await
+        .expect("embedded app server");
+
+    deliver_attributed_rolling_rate_limit_snapshot(
+        &mut app,
+        &app_server,
+        rate_limit_snapshot(/*used_percent*/ 58, None, None),
+        Some(ThreadId::new().to_string()),
+        Some("gpt-5.6-sol".to_string()),
+    )
+    .await;
+    deliver_attributed_rolling_rate_limit_snapshot(
+        &mut app,
+        &app_server,
+        rate_limit_snapshot(/*used_percent*/ 18, None, None),
+        Some(ThreadId::new().to_string()),
+        Some("gpt-5.3-codex-spark".to_string()),
+    )
+    .await;
+
+    let status = render_status_output(&mut app, &mut app_event_rx);
+    assert!(
+        status.contains("42% left"),
+        "expected foreground Sol quota to survive Spark update, got: {status}"
+    );
+    assert!(
+        !status.contains("82% left"),
+        "background Spark quota leaked into foreground status: {status}"
+    );
+
+    app_server.shutdown().await?;
+    Ok(())
 }
 
 fn render_status_output(

@@ -175,14 +175,31 @@ pub(super) fn is_app_server_cyber_policy_error(info: &AppServerCodexErrorInfo) -
     matches!(info, AppServerCodexErrorInfo::CyberPolicy)
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Debug, Default)]
+pub(crate) struct RollingRateLimitSnapshotOrigin {
+    pub(crate) source_thread_id: Option<String>,
+    pub(crate) source_model: Option<String>,
+}
+
+#[derive(Clone)]
 enum RateLimitSnapshotSource {
     AccountUsage,
-    RollingUpdate,
+    RollingUpdate(RollingRateLimitSnapshotOrigin),
 }
 
 fn has_usable_workspace_credits(credits: &CreditsSnapshot) -> bool {
     credits.unlimited || credits.has_credits
+}
+
+fn normalized_model_key(model: &str) -> Option<String> {
+    let model = model.trim();
+    (!model.is_empty()).then(|| model.to_ascii_lowercase())
+}
+
+fn is_spark_model(model: &str) -> bool {
+    model
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .any(|part| part.eq_ignore_ascii_case("spark"))
 }
 
 impl ChatWidget {
@@ -233,7 +250,19 @@ impl ChatWidget {
         self.on_rate_limit_snapshot_from(snapshot, RateLimitSnapshotSource::AccountUsage);
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn on_rolling_rate_limit_snapshot(&mut self, snapshot: RateLimitSnapshot) {
+        self.on_rolling_rate_limit_snapshot_from(
+            snapshot,
+            RollingRateLimitSnapshotOrigin::default(),
+        );
+    }
+
+    pub(crate) fn on_rolling_rate_limit_snapshot_from(
+        &mut self,
+        snapshot: RateLimitSnapshot,
+        origin: RollingRateLimitSnapshotOrigin,
+    ) {
         if let (Some(previous), Some(current)) = (
             self.codex_rate_limit_reached_type,
             snapshot.rate_limit_reached_type,
@@ -244,7 +273,10 @@ impl ChatWidget {
             self.clear_backend_banner();
         }
         // Rolling app-server notifications are sparse. Preserve metadata learned from the full read.
-        self.on_rate_limit_snapshot_from(Some(snapshot), RateLimitSnapshotSource::RollingUpdate);
+        self.on_rate_limit_snapshot_from(
+            Some(snapshot),
+            RateLimitSnapshotSource::RollingUpdate(origin),
+        );
     }
 
     fn on_rate_limit_snapshot_from(
@@ -257,7 +289,11 @@ impl ChatWidget {
                 .limit_id
                 .clone()
                 .unwrap_or_else(|| "codex".to_string());
-            if matches!(source, RateLimitSnapshotSource::RollingUpdate)
+            let limit_label = snapshot
+                .limit_name
+                .clone()
+                .unwrap_or_else(|| limit_id.clone());
+            if matches!(source, RateLimitSnapshotSource::RollingUpdate(_))
                 && snapshot.credits.is_none()
             {
                 snapshot.credits = self
@@ -270,9 +306,41 @@ impl ChatWidget {
                         balance: credits.balance.clone(),
                     });
             }
+            let preserved_individual_limit =
+                if matches!(source, RateLimitSnapshotSource::RollingUpdate(_))
+                    && snapshot.individual_limit.is_none()
+                {
+                    self.rate_limit_snapshots_by_limit_id
+                        .get(&limit_id)
+                        .and_then(|display| display.individual_limit.clone())
+                } else {
+                    None
+                };
             self.plan_type = snapshot.plan_type.or(self.plan_type);
 
             let is_codex_limit = limit_id.eq_ignore_ascii_case("codex");
+            let projects_to_foreground = match &source {
+                RateLimitSnapshotSource::RollingUpdate(origin)
+                    if is_codex_limit
+                        && origin.source_thread_id.is_some()
+                        && origin.source_model.is_some() =>
+                {
+                    let thread_matches = self.thread_id.is_some_and(|thread_id| {
+                        origin.source_thread_id.as_deref() == Some(thread_id.to_string().as_str())
+                    });
+                    let foreground_model = normalized_model_key(self.current_model());
+                    let model_matches = origin
+                        .source_model
+                        .as_deref()
+                        .and_then(normalized_model_key)
+                        .is_some_and(|source_model| {
+                            foreground_model.as_deref() == Some(source_model.as_str())
+                        });
+                    thread_matches || model_matches
+                }
+                _ => true,
+            };
+            let is_foreground_codex_limit = is_codex_limit && projects_to_foreground;
             if is_codex_limit
                 && (matches!(source, RateLimitSnapshotSource::AccountUsage)
                     || snapshot.spend_control_reached.is_some())
@@ -299,7 +367,7 @@ impl ChatWidget {
                     .credits
                     .as_ref()
                     .is_some_and(has_usable_workspace_credits);
-            if is_codex_limit && has_workspace_credits {
+            if is_foreground_codex_limit && has_workspace_credits {
                 match self.rate_limit_switch_prompt {
                     RateLimitSwitchPromptState::Pending => {
                         self.rate_limit_switch_prompt = RateLimitSwitchPromptState::Idle;
@@ -311,7 +379,8 @@ impl ChatWidget {
                     RateLimitSwitchPromptState::Idle => {}
                 }
             }
-            let should_warn_about_rate_limit_usage = is_codex_limit && !has_workspace_credits;
+            let should_warn_about_rate_limit_usage =
+                is_foreground_codex_limit && !has_workspace_credits;
             let warnings = if should_warn_about_rate_limit_usage {
                 self.rate_limit_warnings.take_warnings(
                     self.plan_type,
@@ -336,7 +405,7 @@ impl ChatWidget {
                 vec![]
             };
 
-            let high_usage = is_codex_limit
+            let high_usage = is_foreground_codex_limit
                 && (snapshot
                     .secondary
                     .as_ref()
@@ -360,15 +429,32 @@ impl ChatWidget {
                 self.rate_limit_switch_prompt = RateLimitSwitchPromptState::Pending;
             }
 
+            let model_key = match &source {
+                RateLimitSnapshotSource::RollingUpdate(origin) if is_codex_limit => origin
+                    .source_model
+                    .as_deref()
+                    .and_then(normalized_model_key),
+                RateLimitSnapshotSource::AccountUsage if is_spark_model(&limit_label) => {
+                    normalized_model_key(&limit_label)
+                }
+                _ => None,
+            };
+            let mut display =
+                rate_limit_snapshot_display_for_limit(&snapshot, limit_label, Local::now());
+            if display.individual_limit.is_none() {
+                display.individual_limit = preserved_individual_limit;
+            }
+            if let Some(model_key) = model_key {
+                if is_spark_model(&model_key) {
+                    self.latest_spark_rate_limit_model = Some(model_key.clone());
+                }
+                self.rate_limit_snapshots_by_model
+                    .insert(model_key, display.clone());
+            }
             // /wham/usage identifies ordinary and additional model limits separately. Streamed
-            // updates still drive warnings/recovery above, but must not overwrite status data.
+            // updates still drive warnings/recovery above and feed model-specific meters, but must
+            // not overwrite status data.
             if matches!(source, RateLimitSnapshotSource::AccountUsage) {
-                let limit_label = snapshot
-                    .limit_name
-                    .clone()
-                    .unwrap_or_else(|| limit_id.clone());
-                let display =
-                    rate_limit_snapshot_display_for_limit(&snapshot, limit_label, Local::now());
                 self.rate_limit_snapshots_by_limit_id
                     .insert(limit_id, display);
             }
@@ -381,6 +467,8 @@ impl ChatWidget {
             }
         } else {
             self.rate_limit_snapshots_by_limit_id.clear();
+            self.rate_limit_snapshots_by_model.clear();
+            self.latest_spark_rate_limit_model = None;
             self.codex_rate_limit_reached_type = None;
             self.codex_spend_control_reached = None;
         }

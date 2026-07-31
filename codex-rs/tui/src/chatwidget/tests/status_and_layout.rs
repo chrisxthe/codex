@@ -2,6 +2,7 @@ use super::*;
 use crate::bottom_pane::goal_status_indicator_line;
 use crate::chatwidget::ThreadUsageOutcome;
 use crate::chatwidget::rate_limits::NUDGE_MODEL_SLUG;
+use crate::chatwidget::rate_limits::RollingRateLimitSnapshotOrigin;
 use crate::chatwidget::rate_limits::get_limits_duration;
 use codex_app_server_protocol::SpendControlLimitSnapshot;
 use codex_app_server_protocol::ThreadUsage;
@@ -937,6 +938,79 @@ async fn rate_limit_snapshot_keeps_prior_credits_when_missing_from_headers() {
     assert_eq!(
         display.primary.as_ref().map(|window| window.used_percent),
         Some(10.0)
+    );
+}
+
+#[tokio::test]
+async fn model_scoped_rolling_quota_does_not_replace_foreground_quota() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.6-sol")).await;
+    let foreground_thread_id = ThreadId::new();
+    chat.thread_id = Some(foreground_thread_id);
+
+    chat.on_rolling_rate_limit_snapshot_from(
+        snapshot(/*percent*/ 58.0),
+        RollingRateLimitSnapshotOrigin {
+            source_thread_id: Some(foreground_thread_id.to_string()),
+            source_model: Some("gpt-5.6-sol".to_string()),
+        },
+    );
+    assert_eq!(
+        chat.rate_limit_snapshots_by_limit_id["codex"]
+            .primary
+            .as_ref()
+            .map(|window| window.used_percent),
+        Some(58.0)
+    );
+
+    chat.on_rolling_rate_limit_snapshot_from(
+        snapshot(/*percent*/ 18.0),
+        RollingRateLimitSnapshotOrigin {
+            source_thread_id: Some(ThreadId::new().to_string()),
+            source_model: Some("gpt-5.3-codex-spark".to_string()),
+        },
+    );
+
+    assert_eq!(
+        chat.rate_limit_snapshots_by_limit_id["codex"]
+            .primary
+            .as_ref()
+            .map(|window| window.used_percent),
+        Some(58.0),
+        "background Spark telemetry must not replace foreground Sol quota"
+    );
+    assert_eq!(
+        chat.rate_limit_snapshots_by_model["gpt-5.3-codex-spark"]
+            .primary
+            .as_ref()
+            .map(|window| window.used_percent),
+        Some(18.0),
+        "Spark telemetry remains available for its separate meter"
+    );
+    assert_eq!(
+        chat.latest_spark_rate_limit_model.as_deref(),
+        Some("gpt-5.3-codex-spark")
+    );
+}
+
+#[tokio::test]
+async fn attributed_rolling_quota_updates_foreground_when_model_matches() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.6-sol")).await;
+    chat.thread_id = Some(ThreadId::new());
+
+    chat.on_rolling_rate_limit_snapshot_from(
+        snapshot(/*percent*/ 42.0),
+        RollingRateLimitSnapshotOrigin {
+            source_thread_id: Some(ThreadId::new().to_string()),
+            source_model: Some("GPT-5.6-SOL".to_string()),
+        },
+    );
+
+    assert_eq!(
+        chat.rate_limit_snapshots_by_limit_id["codex"]
+            .primary
+            .as_ref()
+            .map(|window| window.used_percent),
+        Some(42.0)
     );
 }
 

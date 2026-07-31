@@ -216,8 +216,13 @@ impl App {
                     self.rate_limit_hard_stop_generation =
                         self.rate_limit_hard_stop_generation.wrapping_add(1);
                 }
-                self.chat_widget
-                    .on_rolling_rate_limit_snapshot(notification.rate_limits.clone());
+                self.chat_widget.on_rolling_rate_limit_snapshot_from(
+                    notification.rate_limits.clone(),
+                    crate::chatwidget::RollingRateLimitSnapshotOrigin {
+                        source_thread_id: notification.source_thread_id.clone(),
+                        source_model: notification.source_model.clone(),
+                    },
+                );
                 if workspace_hard_stop && self.chat_widget.has_chatgpt_account() {
                     // Background inference may publish a hard stop without a foreground Error.
                     self.refresh_rate_limits(app_server_client, RateLimitRefreshOrigin::Recovery);
