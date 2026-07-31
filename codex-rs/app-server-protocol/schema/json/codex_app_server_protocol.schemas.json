@@ -6629,6 +6629,20 @@
         "properties": {
           "rateLimits": {
             "$ref": "#/definitions/v2/RateLimitSnapshot"
+          },
+          "sourceModel": {
+            "description": "Model whose response produced this sparse update, when known.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceThreadId": {
+            "description": "Thread whose response produced this sparse update, when known.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
