@@ -297,3 +297,14 @@ readiness API.
 MXC uses the standard `command/exec` streaming and process-control path, including
 ConPTY when `tty` is enabled. The buffered legacy Windows sandbox restrictions on
 process control and custom output caps do not apply to MXC.
+
+# Rate-limit update provenance
+
+`account/rateLimits/updated` is a sparse rolling update. Merge available values
+into the most recent `account/rateLimits/read` response or refetch that snapshot.
+When known, `sourceThreadId` and `sourceModel` identify the thread and model whose
+response produced the update; older producers may report either field as `null`.
+
+```json
+{ "method": "account/rateLimits/updated", "params": { "rateLimits": { }, "sourceThreadId": "thread-id", "sourceModel": "gpt-5.3-codex-spark" } }
+```
