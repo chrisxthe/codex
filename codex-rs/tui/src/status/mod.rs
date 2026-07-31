@@ -29,6 +29,7 @@ pub(crate) use helpers::plan_type_display_name;
 pub(crate) use rate_limits::RateLimitSnapshotDisplay;
 pub(crate) use rate_limits::RateLimitWindowDisplay;
 pub(crate) use rate_limits::format_quota_summary;
+pub(crate) use rate_limits::format_spark_quota_summary;
 #[cfg(test)]
 pub(crate) use rate_limits::rate_limit_snapshot_display;
 pub(crate) use rate_limits::rate_limit_snapshot_display_for_limit;
