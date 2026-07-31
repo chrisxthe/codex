@@ -94,7 +94,7 @@ impl UsageNoticeState {
             return false;
         }
         let previous = self.current();
-        let rolling = matches!(source, RateLimitSnapshotSource::RollingUpdate);
+        let rolling = matches!(source, RateLimitSnapshotSource::RollingUpdate(_));
         if rolling {
             self.stale_through = Some(self.latest_read_id);
         }
