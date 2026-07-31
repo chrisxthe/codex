@@ -727,3 +727,15 @@ Tracestate requirements merge individual fields within each member. For example,
 requiring `otel.tracestate.vendor.tenant` preserves an ordinary `vendor.region`.
 Only required fields and edits to their ancestors are protected; sibling fields
 retain their origins and remain writable.
+# Rate-limit update provenance
+
+`account/rateLimits/updated` is a sparse rolling update. Merge available values
+into the most recent `account/rateLimits/read` response or refetch that snapshot.
+When known, `sourceThreadId` and `sourceModel` identify the thread and model whose
+response produced the update; older producers may report either field as `null`.
+
+Example (abbreviated):
+
+```json
+{ "method": "account/rateLimits/updated", "params": { "rateLimits": { }, "sourceThreadId": "thread-id", "sourceModel": "gpt-5.3-codex-spark" } }
+```
