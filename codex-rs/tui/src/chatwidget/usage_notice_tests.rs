@@ -193,7 +193,7 @@ fn sparse_updates_preserve_metadata_until_confirmed_recovery() {
     sparse.primary.as_mut().unwrap().resets_at = None;
     state.update(
         &sparse,
-        RateLimitSnapshotSource::RollingUpdate,
+        RateLimitSnapshotSource::RollingUpdate(Default::default()),
         /*plan_type*/ None,
     );
     let mut expected = initial.primary.unwrap();
@@ -202,14 +202,14 @@ fn sparse_updates_preserve_metadata_until_confirmed_recovery() {
     sparse.primary = None;
     state.update(
         &sparse,
-        RateLimitSnapshotSource::RollingUpdate,
+        RateLimitSnapshotSource::RollingUpdate(Default::default()),
         /*plan_type*/ None,
     );
     assert_eq!(state.current(), Some((expected.clone(), false)));
     let healthy = snapshot(/*used_percent*/ 10);
     state.update(
         &healthy,
-        RateLimitSnapshotSource::RollingUpdate,
+        RateLimitSnapshotSource::RollingUpdate(Default::default()),
         /*plan_type*/ None,
     );
     assert_eq!(state.current(), Some((expected, false)));
@@ -265,7 +265,7 @@ fn usable_credits_suppress_notices_and_survive_sparse_updates() {
         let sparse = snapshot(/*used_percent*/ 96);
         state.update(
             &sparse,
-            RateLimitSnapshotSource::RollingUpdate,
+            RateLimitSnapshotSource::RollingUpdate(Default::default()),
             /*plan_type*/ None,
         );
         assert_eq!(state.current(), None);
