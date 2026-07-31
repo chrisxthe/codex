@@ -109,6 +109,26 @@ pub(crate) fn format_quota_summary(
     (!parts.is_empty()).then(|| parts.join(" "))
 }
 
+pub(crate) fn format_spark_quota_summary(
+    primary: Option<&RateLimitWindowDisplay>,
+    secondary: Option<&RateLimitWindowDisplay>,
+    now: DateTime<Local>,
+) -> Option<String> {
+    let parts = [
+        format_quota_summary_window(primary, "5h", now),
+        format_quota_summary_window(secondary, "wk", now),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+
+    match parts.as_slice() {
+        [] => None,
+        [part] => part.split_once(':').map(|(_, value)| format!("sp:{value}")),
+        _ => Some(format!("sp:{}", parts.join(" "))),
+    }
+}
+
 fn format_quota_summary_window(
     window: Option<&RateLimitWindowDisplay>,
     fallback_label: &str,
@@ -506,6 +526,7 @@ mod tests {
     use super::StatusRateLimitData;
     use super::compose_rate_limit_data_many;
     use super::format_quota_summary;
+    use super::format_spark_quota_summary;
     use chrono::Local;
     use chrono::TimeZone;
     use pretty_assertions::assert_eq;
@@ -646,6 +667,50 @@ mod tests {
         assert_eq!(
             format_quota_summary(Some(&weekly), None, now),
             Some("wk:75%(7d)".to_string())
+        );
+    }
+
+    #[test]
+    fn spark_quota_summary_uses_compact_single_window_label() {
+        let now = Local
+            .with_ymd_and_hms(2026, 7, 17, 12, 0, 0)
+            .single()
+            .expect("timestamp");
+        let weekly = RateLimitWindowDisplay {
+            used_percent: 18.0,
+            resets_at: Some("00:00 on 23 Jul".to_string()),
+            resets_at_unix: Some(now.timestamp() + (5 * 24 * 60 * 60) + (12 * 60 * 60)),
+            window_minutes: Some(10_080),
+        };
+
+        assert_eq!(
+            format_spark_quota_summary(Some(&weekly), None, now),
+            Some("sp:82%(5d12h)".to_string())
+        );
+    }
+
+    #[test]
+    fn spark_quota_summary_keeps_labels_for_two_windows() {
+        let now = Local
+            .with_ymd_and_hms(2026, 4, 11, 15, 0, 0)
+            .single()
+            .expect("timestamp");
+        let primary = RateLimitWindowDisplay {
+            used_percent: 13.0,
+            resets_at: Some("17:01".to_string()),
+            resets_at_unix: Some(now.timestamp() + (2 * 60 * 60) + 60),
+            window_minutes: Some(300),
+        };
+        let secondary = RateLimitWindowDisplay {
+            used_percent: 50.0,
+            resets_at: Some("13:00 on 17 Apr".to_string()),
+            resets_at_unix: Some(now.timestamp() + (5 * 24 * 60 * 60) + (22 * 60 * 60)),
+            window_minutes: Some(10_080),
+        };
+
+        assert_eq!(
+            format_spark_quota_summary(Some(&primary), Some(&secondary), now),
+            Some("sp:5h:87%(2h1m) wk:50%(5d22h)".to_string())
         );
     }
 }

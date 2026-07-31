@@ -440,6 +440,16 @@ impl ChatWidget {
         )
     }
 
+    pub(super) fn status_line_spark_quota_summary(&self) -> Option<String> {
+        let model = self.latest_spark_rate_limit_model.as_deref()?;
+        let snapshot = self.rate_limit_snapshots_by_model.get(model)?;
+        format_spark_quota_summary(
+            snapshot.primary.as_ref(),
+            snapshot.secondary.as_ref(),
+            Local::now(),
+        )
+    }
+
     pub(super) fn status_line_reasoning_effort_label(
         effort: Option<&ReasoningEffortConfig>,
     ) -> String {

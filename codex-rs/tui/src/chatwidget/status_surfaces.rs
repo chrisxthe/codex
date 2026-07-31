@@ -766,6 +766,7 @@ impl ChatWidget {
                 self.status_line_limit_display(Some(window), &label)
             }
             StatusLineItem::QuotaSummary => self.status_line_quota_summary(),
+            StatusLineItem::SparkQuotaSummary => self.status_line_spark_quota_summary(),
             StatusLineItem::CodexVersion => Some(CODEX_CLI_VERSION.to_string()),
             StatusLineItem::ContextWindowSize => self
                 .status_line_context_window_size()
@@ -856,6 +857,7 @@ impl ChatWidget {
             StatusSurfacePreviewItem::FiveHourLimit => StatusLineItem::FiveHourLimit,
             StatusSurfacePreviewItem::WeeklyLimit => StatusLineItem::WeeklyLimit,
             StatusSurfacePreviewItem::QuotaSummary => StatusLineItem::QuotaSummary,
+            StatusSurfacePreviewItem::SparkQuotaSummary => StatusLineItem::SparkQuotaSummary,
             StatusSurfacePreviewItem::CodexVersion => StatusLineItem::CodexVersion,
             StatusSurfacePreviewItem::ContextWindowSize => StatusLineItem::ContextWindowSize,
             StatusSurfacePreviewItem::UsedTokens => StatusLineItem::UsedTokens,

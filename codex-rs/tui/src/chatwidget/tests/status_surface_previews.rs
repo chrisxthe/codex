@@ -392,6 +392,69 @@ async fn status_surface_preview_omits_unavailable_rate_limit_items() {
 }
 
 #[tokio::test]
+async fn spark_quota_status_item_uses_model_scoped_telemetry() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.6-sol")).await;
+
+    assert_eq!(
+        chat.status_line_value_for_item(StatusLineItem::SparkQuotaSummary),
+        None
+    );
+
+    chat.on_rolling_rate_limit_snapshot_from(
+        RateLimitSnapshot {
+            limit_id: Some("codex".to_string()),
+            limit_name: None,
+            primary: Some(RateLimitWindow {
+                used_percent: 18,
+                window_duration_mins: Some(7 * 24 * 60),
+                resets_at: Some(Local::now().timestamp() + (5 * 24 * 60 * 60) + (12 * 60 * 60)),
+            }),
+            secondary: None,
+            credits: None,
+            individual_limit: None,
+            spend_control_reached: None,
+            plan_type: None,
+            rate_limit_reached_type: None,
+        },
+        RollingRateLimitSnapshotOrigin {
+            source_thread_id: Some(ThreadId::new().to_string()),
+            source_model: Some("gpt-5.3-codex-spark".to_string()),
+        },
+    );
+
+    assert_eq!(
+        chat.status_line_value_for_item(StatusLineItem::SparkQuotaSummary),
+        Some("sp:82%(5d12h)".to_string())
+    );
+}
+
+#[tokio::test]
+async fn named_spark_account_bucket_seeds_spark_quota_status_item() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.6-sol")).await;
+
+    chat.on_rate_limit_snapshot(Some(RateLimitSnapshot {
+        limit_id: Some("opaque-spark-bucket".to_string()),
+        limit_name: Some("gpt-5.3-codex-spark".to_string()),
+        primary: Some(RateLimitWindow {
+            used_percent: 18,
+            window_duration_mins: Some(7 * 24 * 60),
+            resets_at: Some(Local::now().timestamp() + (5 * 24 * 60 * 60) + (12 * 60 * 60)),
+        }),
+        secondary: None,
+        credits: None,
+        individual_limit: None,
+        spend_control_reached: None,
+        plan_type: None,
+        rate_limit_reached_type: None,
+    }));
+
+    assert_eq!(
+        chat.status_line_value_for_item(StatusLineItem::SparkQuotaSummary),
+        Some("sp:82%(5d12h)".to_string())
+    );
+}
+
+#[tokio::test]
 async fn status_line_setup_popup_rate_limits_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     cache_rate_limit_snapshot(&mut chat);

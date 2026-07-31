@@ -120,6 +120,9 @@ pub(crate) enum StatusLineItem {
     /// Combined short summary of quota usage and reset countdowns.
     QuotaSummary,
 
+    /// Compact quota summary for the most recently observed Spark model.
+    SparkQuotaSummary,
+
     /// Codex application version.
     CodexVersion,
 
@@ -202,6 +205,9 @@ impl StatusLineItem {
             StatusLineItem::QuotaSummary => {
                 "Compact summary of 5-hour and weekly quota remaining with reset countdowns"
             }
+            StatusLineItem::SparkQuotaSummary => {
+                "Compact Spark quota remaining with reset countdowns (omitted when unavailable)"
+            }
             StatusLineItem::CodexVersion => "Codex application version",
             StatusLineItem::ContextWindowSize => {
                 "Total context window size in tokens (omitted when unknown)"
@@ -253,6 +259,7 @@ impl StatusLineItem {
             StatusLineItem::FiveHourLimit => StatusSurfacePreviewItem::FiveHourLimit,
             StatusLineItem::WeeklyLimit => StatusSurfacePreviewItem::WeeklyLimit,
             StatusLineItem::QuotaSummary => StatusSurfacePreviewItem::QuotaSummary,
+            StatusLineItem::SparkQuotaSummary => StatusSurfacePreviewItem::SparkQuotaSummary,
             StatusLineItem::CodexVersion => StatusSurfacePreviewItem::CodexVersion,
             StatusLineItem::ContextWindowSize => StatusSurfacePreviewItem::ContextWindowSize,
             StatusLineItem::UsedTokens => StatusSurfacePreviewItem::UsedTokens,
@@ -586,6 +593,30 @@ mod tests {
                 )
             ),
             Some("5h:87%(2h1m) wk:50%(5d22h)".to_string())
+        );
+    }
+
+    #[test]
+    fn spark_quota_summary_parses_and_renders_in_preview() {
+        assert_eq!(
+            StatusLineItem::SparkQuotaSummary.to_string(),
+            "spark-quota-summary"
+        );
+        assert_eq!(
+            "spark-quota-summary".parse::<StatusLineItem>(),
+            Ok(StatusLineItem::SparkQuotaSummary)
+        );
+
+        let preview_data = StatusSurfacePreviewData::from_iter([(
+            StatusLineItem::SparkQuotaSummary.preview_item(),
+            "sp:82%(5d12h)".to_string(),
+        )]);
+        assert_eq!(
+            line_text(preview_data.status_line_for_items(
+                [StatusLineItem::SparkQuotaSummary],
+                /*use_theme_colors*/ true,
+            )),
+            Some("sp:82%(5d12h)".to_string())
         );
     }
 
