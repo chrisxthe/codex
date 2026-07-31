@@ -53,7 +53,8 @@ impl StatusLineAccent {
             | StatusLineItem::EstimatedThreadCost => Self::Usage,
             StatusLineItem::FiveHourLimit
             | StatusLineItem::WeeklyLimit
-            | StatusLineItem::QuotaSummary => Self::Limit,
+            | StatusLineItem::QuotaSummary
+            | StatusLineItem::SparkQuotaSummary => Self::Limit,
             StatusLineItem::CodexVersion | StatusLineItem::Hostname | StatusLineItem::SessionId => {
                 Self::Metadata
             }
