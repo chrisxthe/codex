@@ -22,12 +22,14 @@ use tokio::io::AsyncWrite;
 use tokio::time::Instant;
 use tokio::time::sleep;
 use tokio::time::timeout;
+use tokio::time::timeout_at;
 use tokio_tungstenite::WebSocketStream;
 
 use crate::RemoteControlReadyStatus;
 use crate::client;
 
 const REMOTE_CONTROL_READY_TIMEOUT: Duration = Duration::from_secs(10);
+const REMOTE_CONTROL_PAIRING_RESPONSE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const REMOTE_CONTROL_REQUEST_ID: RequestId = RequestId::Integer(2);
 const INVALID_PARAMS_ERROR_CODE: i64 = -32602;
 
@@ -49,6 +51,7 @@ pub(crate) async fn disable_remote_control(socket_path: &Path) -> Result<RemoteC
         &mut websocket,
         "remoteControl/disable",
         params,
+        client::CONTROL_SOCKET_RESPONSE_TIMEOUT,
     )
     .await?;
     websocket.close(None).await.ok();
@@ -70,6 +73,7 @@ pub(crate) async fn start_pairing(socket_path: &Path) -> Result<RemoteControlPai
         &mut websocket,
         &REMOTE_CONTROL_REQUEST_ID,
         "remoteControl/pairing/start",
+        REMOTE_CONTROL_PAIRING_RESPONSE_TIMEOUT,
     )
     .await?
     {
@@ -107,6 +111,7 @@ where
         websocket,
         "remoteControl/enable",
         serde_json::to_value(RemoteControlEnableParams { ephemeral: true })?,
+        client::CONTROL_SOCKET_RESPONSE_TIMEOUT,
     )
     .await?;
     let mut latest = RemoteControlReadyStatus::from(response);
@@ -155,6 +160,7 @@ async fn request_remote_control_with_legacy_fallback<S, T>(
     websocket: &mut WebSocketStream<S>,
     method: &str,
     params: serde_json::Value,
+    response_timeout: Duration,
 ) -> Result<T>
 where
     S: AsyncRead + AsyncWrite + Unpin,
@@ -167,7 +173,14 @@ where
         Some(params),
     )
     .await?;
-    match read_remote_control_response(websocket, &REMOTE_CONTROL_REQUEST_ID, method).await? {
+    match read_remote_control_response(
+        websocket,
+        &REMOTE_CONTROL_REQUEST_ID,
+        method,
+        response_timeout,
+    )
+    .await?
+    {
         RemoteControlRpcResponse::Success(response) => Ok(response),
         RemoteControlRpcResponse::InvalidParams => {
             send_remote_control_request(
@@ -177,8 +190,13 @@ where
                 /*params*/ None,
             )
             .await?;
-            match read_remote_control_response(websocket, &REMOTE_CONTROL_REQUEST_ID, method)
-                .await?
+            match read_remote_control_response(
+                websocket,
+                &REMOTE_CONTROL_REQUEST_ID,
+                method,
+                response_timeout,
+            )
+            .await?
             {
                 RemoteControlRpcResponse::Success(response) => Ok(response),
                 RemoteControlRpcResponse::InvalidParams => {
@@ -217,18 +235,17 @@ async fn read_remote_control_response<S, T>(
     websocket: &mut WebSocketStream<S>,
     request_id: &RequestId,
     method: &str,
+    response_timeout: Duration,
 ) -> Result<RemoteControlRpcResponse<T>>
 where
     S: AsyncRead + AsyncWrite + Unpin,
     T: DeserializeOwned,
 {
+    let deadline = Instant::now() + response_timeout;
     loop {
-        let message = timeout(
-            client::CONTROL_SOCKET_RESPONSE_TIMEOUT,
-            client::read_message(websocket),
-        )
-        .await
-        .with_context(|| format!("timed out waiting for {method} response"))??;
+        let message = timeout_at(deadline, client::read_message(websocket))
+            .await
+            .with_context(|| format!("timed out waiting for {method} response"))??;
         match message {
             JSONRPCMessage::Response(response) if response.id == *request_id => {
                 let response = serde_json::from_value::<T>(response.result)
@@ -612,6 +629,115 @@ mod tests {
                 environment_id: "env_test".to_string(),
                 expires_at: 1_700_000_000,
             }
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn start_pairing_allows_first_time_response_latency() -> Result<()> {
+        let dir = TempDir::new()?;
+        let socket_path = dir.path().join("app-server.sock");
+        let listener = UnixListener::bind(&socket_path).await?;
+        let (request_received_tx, request_received_rx) = tokio::sync::oneshot::channel();
+        let server_task = tokio::spawn(async move {
+            let mut websocket = accept_initialized_client(listener).await?;
+            let pairing = client::read_message(&mut websocket).await?;
+            let JSONRPCMessage::Request(pairing) = pairing else {
+                panic!("expected remoteControl/pairing/start request");
+            };
+            assert_eq!(pairing.id, REMOTE_CONTROL_REQUEST_ID);
+            assert_eq!(pairing.method, "remoteControl/pairing/start");
+            assert_eq!(
+                pairing.params,
+                Some(serde_json::json!({ "manualCode": true }))
+            );
+            request_received_tx
+                .send(())
+                .map_err(|_| anyhow!("request signal receiver dropped"))?;
+            sleep(client::CONTROL_SOCKET_RESPONSE_TIMEOUT + Duration::from_millis(100)).await;
+            client::send_message(
+                &mut websocket,
+                &JSONRPCMessage::Response(JSONRPCResponse {
+                    id: REMOTE_CONTROL_REQUEST_ID,
+                    result: serde_json::to_value(RemoteControlPairingStartResponse {
+                        pairing_code: "pairing-code".to_string(),
+                        manual_pairing_code: Some("ABCD-EFGH".to_string()),
+                        environment_id: "env_test".to_string(),
+                        expires_at: 1_700_000_000,
+                    })?,
+                }),
+            )
+            .await?;
+            Ok::<_, anyhow::Error>(())
+        });
+
+        let client_task = tokio::spawn(async move { start_pairing(&socket_path).await });
+        request_received_rx
+            .await
+            .map_err(|_| anyhow!("request signal sender dropped"))?;
+        let response = client_task.await.map_err(anyhow::Error::from)??;
+        server_task.await??;
+        assert_eq!(
+            response,
+            RemoteControlPairingStartResponse {
+                pairing_code: "pairing-code".to_string(),
+                manual_pairing_code: Some("ABCD-EFGH".to_string()),
+                environment_id: "env_test".to_string(),
+                expires_at: 1_700_000_000,
+            }
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn start_pairing_notifications_do_not_reset_response_deadline() -> Result<()> {
+        let dir = TempDir::new()?;
+        let socket_path = dir.path().join("app-server.sock");
+        let mut listener = UnixListener::bind(&socket_path).await?;
+        let server_task = tokio::spawn(async move {
+            let stream = listener.accept().await?;
+            let mut websocket = accept_async(stream).await?;
+            sleep(Duration::from_millis(750)).await;
+            send_remote_control_status(
+                &mut websocket,
+                remote_control_status(RemoteControlConnectionStatus::Connecting, Some("env_test")),
+            )
+            .await?;
+            std::future::pending::<()>().await;
+            Ok::<_, anyhow::Error>(())
+        });
+
+        let mut websocket = client::connect(&socket_path).await?;
+        let started_at = std::time::Instant::now();
+        let error = match read_remote_control_response::<_, RemoteControlPairingStartResponse>(
+            &mut websocket,
+            &REMOTE_CONTROL_REQUEST_ID,
+            "remoteControl/pairing/start",
+            Duration::from_secs(1),
+        )
+        .await
+        {
+            Ok(_) => panic!(
+                "read_remote_control_response should time out when only notifications arrive"
+            ),
+            Err(error) => error,
+        };
+        let elapsed = started_at.elapsed();
+        server_task.abort();
+        let _ = server_task.await;
+        assert!(
+            error
+                .to_string()
+                .contains("timed out waiting for remoteControl/pairing/start response"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(900),
+            "expected timeout near 1s, got {elapsed:?}"
+        );
+        assert!(
+            elapsed < Duration::from_millis(1500),
+            "expected timeout near 1s, got {elapsed:?}"
         );
         Ok(())
     }
