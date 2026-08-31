@@ -226,6 +226,8 @@ async fn backend_banner_limit_error_refreshes_again_after_intervening_rolling_ha
             ServerNotification::AccountRateLimitsUpdated(
                 codex_app_server_protocol::AccountRateLimitsUpdatedNotification {
                     rate_limits: rolling.clone(),
+                    source_thread_id: None,
+                    source_model: None,
                 },
             ),
         )),
@@ -255,6 +257,8 @@ async fn backend_banner_limit_error_refreshes_again_after_intervening_rolling_ha
             ServerNotification::AccountRateLimitsUpdated(
                 codex_app_server_protocol::AccountRateLimitsUpdatedNotification {
                     rate_limits: rolling,
+                    source_thread_id: None,
+                    source_model: None,
                 },
             ),
         )),
@@ -313,6 +317,8 @@ async fn backend_banner_rolling_only_recovery_holds_new_input() -> Result<()> {
             ServerNotification::AccountRateLimitsUpdated(
                 codex_app_server_protocol::AccountRateLimitsUpdatedNotification {
                     rate_limits: rolling,
+                    source_thread_id: None,
+                    source_model: None,
                 },
             ),
         )),
