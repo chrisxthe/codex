@@ -947,13 +947,7 @@ async fn model_scoped_rolling_quota_does_not_replace_foreground_quota() {
     let foreground_thread_id = ThreadId::new();
     chat.thread_id = Some(foreground_thread_id);
 
-    chat.on_rolling_rate_limit_snapshot_from(
-        snapshot(/*percent*/ 58.0),
-        RollingRateLimitSnapshotOrigin {
-            source_thread_id: Some(foreground_thread_id.to_string()),
-            source_model: Some("gpt-5.6-sol".to_string()),
-        },
-    );
+    chat.on_rate_limit_snapshot(Some(snapshot(/*percent*/ 58.0)));
     assert_eq!(
         chat.rate_limit_snapshots_by_limit_id["codex"]
             .primary
@@ -993,9 +987,10 @@ async fn model_scoped_rolling_quota_does_not_replace_foreground_quota() {
 }
 
 #[tokio::test]
-async fn attributed_rolling_quota_updates_foreground_when_model_matches() {
+async fn attributed_rolling_quota_keeps_account_status_when_model_matches() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.6-sol")).await;
     chat.thread_id = Some(ThreadId::new());
+    chat.on_rate_limit_snapshot(Some(snapshot(/*percent*/ 58.0)));
 
     chat.on_rolling_rate_limit_snapshot_from(
         snapshot(/*percent*/ 42.0),
@@ -1010,7 +1005,16 @@ async fn attributed_rolling_quota_updates_foreground_when_model_matches() {
             .primary
             .as_ref()
             .map(|window| window.used_percent),
-        Some(42.0)
+        Some(58.0),
+        "rolling telemetry must not overwrite account-read status data"
+    );
+    assert_eq!(
+        chat.rate_limit_snapshots_by_model["gpt-5.6-sol"]
+            .primary
+            .as_ref()
+            .map(|window| window.used_percent),
+        Some(42.0),
+        "rolling telemetry remains available in the model-specific cache"
     );
 }
 
@@ -4069,7 +4073,7 @@ async fn status_line_model_with_reasoning_includes_fast_for_fast_capable_models(
 #[tokio::test]
 async fn status_line_quota_summary_includes_reset_countdowns() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.config.tui_status_line = Some(vec!["quota-summary".to_string()]);
+    chat.local_settings.tui.status_line = Some(vec!["quota-summary".to_string()]);
     let now = chrono::Utc::now().timestamp();
     chat.on_rate_limit_snapshot(Some(RateLimitSnapshot {
         limit_id: None,
@@ -4101,7 +4105,7 @@ async fn status_line_quota_summary_includes_reset_countdowns() {
 #[tokio::test]
 async fn status_line_quota_summary_labels_weekly_only_primary_window() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.config.tui_status_line = Some(vec!["quota-summary".to_string()]);
+    chat.local_settings.tui.status_line = Some(vec!["quota-summary".to_string()]);
     let now = chrono::Utc::now().timestamp();
     chat.on_rate_limit_snapshot(Some(RateLimitSnapshot {
         limit_id: None,
