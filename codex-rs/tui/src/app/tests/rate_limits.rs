@@ -92,14 +92,12 @@ async fn background_model_quota_notification_does_not_replace_foreground_meter()
         .await
         .expect("embedded app server");
 
-    deliver_attributed_rolling_rate_limit_snapshot(
-        &mut app,
-        &app_server,
-        rate_limit_snapshot(/*used_percent*/ 58, None, None),
-        Some(ThreadId::new().to_string()),
-        Some("gpt-5.6-sol".to_string()),
-    )
-    .await;
+    app.chat_widget
+        .on_rate_limit_snapshot(Some(rate_limit_snapshot(
+            /*used_percent*/ 58,
+            None,
+            None,
+        )));
     deliver_attributed_rolling_rate_limit_snapshot(
         &mut app,
         &app_server,
