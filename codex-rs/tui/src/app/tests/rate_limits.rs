@@ -94,9 +94,7 @@ async fn background_model_quota_notification_does_not_replace_foreground_meter()
 
     app.chat_widget
         .on_rate_limit_snapshot(Some(rate_limit_snapshot(
-            /*used_percent*/ 58,
-            None,
-            None,
+            /*used_percent*/ 58, None, None,
         )));
     deliver_attributed_rolling_rate_limit_snapshot(
         &mut app,
