@@ -4103,6 +4103,7 @@ async fn status_line_quota_summary_includes_reset_countdowns() {
     chat.on_rate_limit_snapshot(Some(RateLimitSnapshot {
         limit_id: None,
         limit_name: None,
+        normal_model_slug: None,
         primary: Some(RateLimitWindow {
             used_percent: 13,
             window_duration_mins: Some(300),
@@ -4134,6 +4135,7 @@ async fn status_line_quota_summary_labels_weekly_only_primary_window() {
     chat.on_rate_limit_snapshot(Some(RateLimitSnapshot {
         limit_id: None,
         limit_name: None,
+        normal_model_slug: None,
         primary: Some(RateLimitWindow {
             used_percent: 25,
             window_duration_mins: Some(10_080),
