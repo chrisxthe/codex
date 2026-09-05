@@ -404,6 +404,7 @@ async fn spark_quota_status_item_uses_model_scoped_telemetry() {
         RateLimitSnapshot {
             limit_id: Some("codex".to_string()),
             limit_name: None,
+            normal_model_slug: None,
             primary: Some(RateLimitWindow {
                 used_percent: 18,
                 window_duration_mins: Some(7 * 24 * 60),
@@ -435,6 +436,7 @@ async fn named_spark_account_bucket_seeds_spark_quota_status_item() {
     chat.on_rate_limit_snapshot(Some(RateLimitSnapshot {
         limit_id: Some("opaque-spark-bucket".to_string()),
         limit_name: Some("gpt-5.3-codex-spark".to_string()),
+        normal_model_slug: None,
         primary: Some(RateLimitWindow {
             used_percent: 18,
             window_duration_mins: Some(7 * 24 * 60),
