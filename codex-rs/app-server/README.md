@@ -527,6 +527,7 @@ and out-of-scope item IDs return invalid params (`-32602`) with
 Omitted or null cursors preserve normal first-page behavior. Continue anchored
 pages with the returned opaque string `nextCursor`; response fields and
 `backwardsCursor` semantics are unchanged.
+
 # Rate-limit update provenance
 
 `account/rateLimits/updated` is a sparse rolling update. Merge available values
@@ -534,8 +535,8 @@ into the most recent `account/rateLimits/read` response or refetch that snapshot
 When known, `sourceThreadId` and `sourceModel` identify the thread and model whose
 response produced the update; older producers may report either field as `null`.
 
-Example (abbreviated):
+Abbreviated example (rate-limit fields omitted):
 
 ```json
-{ "method": "account/rateLimits/updated", "params": { "rateLimits": { }, "sourceThreadId": "thread-id", "sourceModel": "gpt-5.3-codex-spark" } }
+{ "method": "account/rateLimits/updated", "params": { "rateLimits": {}, "sourceThreadId": "thread-id", "sourceModel": "gpt-5.3-codex-spark" } }
 ```
