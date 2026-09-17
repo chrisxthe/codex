@@ -4,6 +4,7 @@ use std::io::Write;
 use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::os::fd::OwnedFd;
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Child;
 use std::process::Command;
@@ -342,7 +343,8 @@ impl PtyCodex {
         let stdin = slave.try_clone().context("clone pseudo-terminal stdin")?;
         let stdout = slave.try_clone().context("clone pseudo-terminal stdout")?;
 
-        let child = Command::new(codex)
+        let mut command = Command::new(codex);
+        command
             .args(extra_args)
             .arg("-C")
             .arg(repo_root)
@@ -357,7 +359,23 @@ impl PtyCodex {
             .env("CODEX_HOME", codex_home.path())
             .stdin(stdin)
             .stdout(stdout)
-            .stderr(slave)
+            .stderr(slave);
+        // SAFETY: only async-signal-safe terminal setup runs between fork and exec. Stdin
+        // already refers to the slave PTY; make it /dev/tty so size queries use this PTY
+        // rather than the parent's controlling terminal.
+        unsafe {
+            command.pre_exec(|| {
+                if libc::setsid() == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                #[allow(clippy::cast_lossless)]
+                if libc::ioctl(libc::STDIN_FILENO, libc::TIOCSCTTY as _, 0) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let child = command
             .spawn()
             .context("start Codex in focus-test pseudo-terminal")?;
 
