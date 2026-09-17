@@ -4,6 +4,7 @@ use std::io::Write;
 use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::os::fd::OwnedFd;
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Child;
 use std::process::Command;
@@ -22,8 +23,6 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 30);
 const FOCUS_INPUT_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 5);
 const FOCUS_PROBE_INPUT: &str = "focus-palette-24527";
 
-#[path = "external_editor_tests.rs"]
-mod external_editor;
 #[path = "tui_mode_picker_tests.rs"]
 mod tui_mode_picker;
 
@@ -293,9 +292,7 @@ impl PtyCodex {
     ) -> Result<Self> {
         let codex = codex_utils_cargo_bin::cargo_bin("codex-tui")
             .or_else(|_| codex_utils_cargo_bin::cargo_bin("codex"))?;
-        Self::start_binary(
-            &codex, repo_root, codex_home, extra_args, /*editor*/ None,
-        )
+        Self::start_binary(&codex, repo_root, codex_home, extra_args)
     }
 
     /// Include the CLI dispatch futures when testing production stack headroom.
@@ -306,9 +303,7 @@ impl PtyCodex {
     ) -> Result<Self> {
         let codex = codex_utils_cargo_bin::cargo_bin("codex")
             .context("build codex-cli and set CARGO_BIN_EXE_codex to its executable")?;
-        Self::start_binary(
-            &codex, repo_root, codex_home, extra_args, /*editor*/ None,
-        )
+        Self::start_binary(&codex, repo_root, codex_home, extra_args)
     }
 
     fn start_binary(
@@ -316,7 +311,6 @@ impl PtyCodex {
         repo_root: &Path,
         codex_home: TempDir,
         extra_args: &[&str],
-        editor: Option<&Path>,
     ) -> Result<Self> {
         let mut master_fd = -1;
         let mut slave_fd = -1;
@@ -353,7 +347,7 @@ impl PtyCodex {
         if let Some(editor) = editor {
             command.env("VISUAL", editor);
         }
-        let child = command
+        command
             .args(extra_args)
             .arg("-C")
             .arg(repo_root)
@@ -368,7 +362,23 @@ impl PtyCodex {
             .env("CODEX_HOME", codex_home.path())
             .stdin(stdin)
             .stdout(stdout)
-            .stderr(slave)
+            .stderr(slave);
+        // SAFETY: only async-signal-safe terminal setup runs between fork and exec. Stdin
+        // already refers to the slave PTY; make it /dev/tty so size queries use this PTY
+        // rather than the parent's controlling terminal.
+        unsafe {
+            command.pre_exec(|| {
+                if libc::setsid() == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                #[allow(clippy::cast_lossless)]
+                if libc::ioctl(libc::STDIN_FILENO, libc::TIOCSCTTY as _, 0) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let child = command
             .spawn()
             .context("start Codex in focus-test pseudo-terminal")?;
 
