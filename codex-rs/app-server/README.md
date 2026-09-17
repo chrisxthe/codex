@@ -305,6 +305,8 @@ into the most recent `account/rateLimits/read` response or refetch that snapshot
 When known, `sourceThreadId` and `sourceModel` identify the thread and model whose
 response produced the update; older producers may report either field as `null`.
 
+Abbreviated example (rate-limit fields omitted):
+
 ```json
-{ "method": "account/rateLimits/updated", "params": { "rateLimits": { }, "sourceThreadId": "thread-id", "sourceModel": "gpt-5.3-codex-spark" } }
+{ "method": "account/rateLimits/updated", "params": { "rateLimits": {}, "sourceThreadId": "thread-id", "sourceModel": "gpt-5.3-codex-spark" } }
 ```
