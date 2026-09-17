@@ -1885,6 +1885,7 @@ async fn overview_cold_resume_honors_working_directory_selection() -> Result<()>
 #[tokio::test]
 async fn restored_server_permission_profile_survives_cd_without_turn_override() -> Result<()> {
     let mut app = make_test_app().await;
+    trust_fixture_folders(&mut app);
     let destination = app.config.codex_home.join("destination");
     std::fs::create_dir(&destination)?;
     crate::legacy_core::config::set_project_trust_level(
