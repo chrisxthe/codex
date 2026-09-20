@@ -1,5 +1,6 @@
 ---
 source: tui/src/bottom_pane/chat_composer/status_surface_tests.rs
+assertion_line: 133
 expression: text
 ---
 
@@ -13,14 +14,14 @@ expression: text
   Keyboard shortcuts
 
   Compose
-  /        Commands
-  @        Mention files
-  !        Shell command
-  ctrl+j   New line
-  ctrl+v   Paste image
-  ctrl+g   External editor
-  ctrl+r   Search history
-  esc esc  Edit last message
+  /         Commands
+  @         Mention files
+  !         Shell command
+  ctrl+j    New line
+  ctrl+⌥+v  Paste image
+  ctrl+g    External editor
+  ctrl+r    Search history
+  esc esc   Edit last message
 
   Session
   tab     Send message
