@@ -52,6 +52,13 @@ filter = 'test(rmcp_client) | test(humanlike_typing_1000_chars_appears_live_no_p
 slow-timeout = { period = "1m", terminate-after = 4 }
 
 [[profile.default.overrides]]
+# Starts an embedded app server once per workspace plan. The module-qualified
+# name does not match an exact short filter. Debug runs on this WSL host finish
+# just after the default 60s kill, and longer while the rest of codex-tui runs.
+filter = 'package(codex-tui) & test(unsupported_workspace_plans_hide_top_chats_and_skip_loading)'
+slow-timeout = { period = "3m", terminate-after = 2 }
+
+[[profile.default.overrides]]
 # This end-to-end case launches several CLI subprocesses and checks cloud policy.
 filter = 'package(codex-exec) & test(worktree_start_and_fork_use_host_pool_and_preserve_legacy_resume)'
 slow-timeout = { period = "30s", terminate-after = 4 }
