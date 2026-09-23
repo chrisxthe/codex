@@ -347,11 +347,9 @@ impl ChatWidget {
             let is_foreground_codex_limit = is_codex_limit && projects_to_foreground;
             // Child-model rolling updates stay out of the foreground usage notice.
             if is_foreground_codex_limit
-                && self.usage_notice_state.update(
-                    &snapshot,
-                    source.clone(),
-                    self.plan_type,
-                )
+                && self
+                    .usage_notice_state
+                    .update(&snapshot, source.clone(), self.plan_type)
             {
                 self.request_redraw();
             }
