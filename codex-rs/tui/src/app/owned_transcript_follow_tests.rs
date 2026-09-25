@@ -129,8 +129,10 @@ async fn follow_control_click_preserves_draft_caret_and_composer_geometry() -> R
         if running {
             insta::assert_snapshot!(
                 "running_follow_control",
-                crate::chatwidget::tests::helpers::normalize_snapshot_paths(
-                    super::tests::buffer_text(buffer)
+                crate::chatwidget::tests::helpers::normalize_status_indicator_snapshot(
+                    crate::chatwidget::tests::helpers::normalize_snapshot_paths(
+                        super::tests::buffer_text(buffer)
+                    ),
                 ),
             );
         }
@@ -194,8 +196,10 @@ async fn follow_control_click_preserves_draft_caret_and_composer_geometry() -> R
             }
             insta::assert_snapshot!(
                 "running_copy_feedback_spacing",
-                crate::chatwidget::tests::helpers::normalize_working_snapshot(
-                    snapshots.join("\n\n")
+                crate::chatwidget::tests::helpers::normalize_status_indicator_snapshot(
+                    crate::chatwidget::tests::helpers::normalize_working_snapshot(
+                        snapshots.join("\n\n")
+                    ),
                 ),
             );
         }
