@@ -87,8 +87,10 @@ async fn follow_control_click_preserves_draft_caret_and_composer_geometry() -> R
                     crate::custom_terminal::test_support::last_rendered_buffer(&tui.terminal);
                 insta::assert_snapshot!(
                     "running_follow_control_short_terminal",
-                    crate::chatwidget::tests::helpers::normalize_snapshot_paths(
-                        super::tests::buffer_text(buffer)
+                    crate::chatwidget::tests::helpers::normalize_status_indicator_snapshot(
+                        crate::chatwidget::tests::helpers::normalize_snapshot_paths(
+                            super::tests::buffer_text(buffer)
+                        ),
                     ),
                 );
             }
