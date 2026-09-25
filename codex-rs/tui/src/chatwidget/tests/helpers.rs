@@ -67,6 +67,50 @@ pub(crate) fn normalize_snapshot_paths(text: impl Into<String>) -> String {
     }
 }
 
+pub(crate) fn normalize_status_indicator_snapshot(text: impl AsRef<str>) -> String {
+    text.as_ref()
+        .split('\n')
+        .map(|line| {
+            let normalized = line.replace("◦ Working", "• Working");
+            let Some((status_start, _)) = normalized.match_indices("Working (").next() else {
+                return normalized;
+            };
+            let elapsed_start = status_start + "Working (".len();
+            let Some(elapsed_end) = normalized[elapsed_start..].find("s •") else {
+                return normalized;
+            };
+            let elapsed = &normalized[elapsed_start..elapsed_start + elapsed_end];
+            if elapsed.is_empty() || !elapsed.chars().all(|character| character.is_ascii_digit()) {
+                return normalized;
+            }
+
+            format!(
+                "{}0s{}",
+                &normalized[..elapsed_start],
+                &normalized[elapsed_start + elapsed_end + 1..]
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::assert_eq;
+
+    use super::normalize_status_indicator_snapshot;
+
+    #[test]
+    fn status_snapshot_normalization_hides_only_elapsed_indicator_variance() {
+        assert_eq!(
+            normalize_status_indicator_snapshot(
+                "◦ Working (2s • esc to interrupt)\n◦ unrelated status"
+            ),
+            "• Working (0s • esc to interrupt)\n◦ unrelated status",
+        );
+    }
+}
+
 /// Normalize command-center fixture paths without moving fixed pane separators.
 /// Pad after each complete pane so group counts and destination hints keep their spacing.
 pub(crate) fn normalize_agent_center_snapshot(text: impl AsRef<str>) -> String {
