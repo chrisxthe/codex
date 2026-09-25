@@ -45,6 +45,9 @@ async fn follow_control_click_preserves_draft_caret_and_composer_geometry() -> R
         let size = Size::new(width, /*height*/ 12);
         tui.screen_size_for_event(&TuiEvent::Resize(size))?;
         app.transcript_view.jump_to_latest();
+        if running {
+            app.chat_widget.reset_status_timer_for_test();
+        }
         let bottom = app.render_owned_transcript(&mut tui, size)?;
         let cursor = tui.terminal.last_known_cursor_pos;
         if running {
@@ -65,6 +68,9 @@ async fn follow_control_click_preserves_draft_caret_and_composer_geometry() -> R
         assert_eq!(tui.terminal.last_known_cursor_pos, cursor);
         for height in [24, 9, 8, 12] {
             let resized = Size::new(width, height);
+            if running && matches!(height, 9 | 12) {
+                app.chat_widget.reset_status_timer_for_test();
+            }
             tui.screen_size_for_event(&TuiEvent::Resize(resized))?;
             app.render_owned_transcript(&mut tui, resized)?;
             let resized_cursor = tui.terminal.last_known_cursor_pos;
@@ -155,6 +161,7 @@ async fn follow_control_click_preserves_draft_caret_and_composer_geometry() -> R
             let mut snapshots = Vec::new();
             for (width, height) in [(80, 12), (18, 14), (6, 18), (80, 6)] {
                 let size = Size::new(width, height);
+                app.chat_widget.reset_status_timer_for_test();
                 tui.screen_size_for_event(&TuiEvent::Resize(size))?;
                 app.render_owned_transcript(&mut tui, size)?;
                 let buffer =

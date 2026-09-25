@@ -2024,6 +2024,11 @@ impl ChatWidget {
         self.bottom_pane.status_line_text()
     }
 
+    #[cfg(test)]
+    pub(crate) fn reset_status_timer_for_test(&mut self) {
+        self.bottom_pane.reset_status_timer(Duration::ZERO);
+    }
+
     pub(crate) fn clear_token_usage(&mut self) {
         self.token_info = None;
     }

@@ -71,7 +71,9 @@ pub(crate) fn normalize_status_indicator_snapshot(text: impl AsRef<str>) -> Stri
     text.as_ref()
         .split('\n')
         .map(|line| {
-            let normalized = line.replace("◦ Working", "• Working");
+            let normalized = line
+                .replace("◦ Working", "• Working")
+                .replace("◦ Wor", "• Wor");
             let Some((status_start, _)) = normalized.match_indices("Working (").next() else {
                 return normalized;
             };
