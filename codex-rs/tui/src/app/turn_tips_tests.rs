@@ -254,6 +254,7 @@ async fn turn_tip_placements_and_completion_barrier() -> Result<()> {
                 &tui.terminal,
             )),
         );
+        let screen = crate::chatwidget::tests::helpers::normalize_status_indicator_snapshot(screen);
         let shown = screen.contains("└ Tip:");
         if shown && !working {
             assert!(screen.contains("• Done."), "{screen}");
