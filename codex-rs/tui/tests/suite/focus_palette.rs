@@ -344,9 +344,6 @@ impl PtyCodex {
         let stdout = slave.try_clone().context("clone pseudo-terminal stdout")?;
 
         let mut command = Command::new(codex);
-        if let Some(editor) = editor {
-            command.env("VISUAL", editor);
-        }
         command
             .args(extra_args)
             .arg("-C")
