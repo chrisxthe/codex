@@ -375,7 +375,7 @@ impl PtyCodex {
         if let Some(editor) = editor {
             command.env("VISUAL", editor);
         }
-        let child = command
+        command
             .args(extra_args)
             .arg("-C")
             .arg(repo_root)

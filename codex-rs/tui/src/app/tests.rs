@@ -3144,6 +3144,11 @@ async fn handle_start_side_seeds_navigation_before_thread_started() -> Result<()
         )
         .expect("create other rollout"),
     )?;
+    crate::legacy_core::config::edit::ConfigEditsBuilder::for_config(&config)
+        .set_resume_cwd(codex_config::types::ResumeCwdMode::Session)
+        .apply()
+        .await
+        .map_err(std::io::Error::other)?;
     let mut app_server = Box::pin(crate::start_embedded_app_server_for_picker(&config)).await?;
     let started = app_server
         .resume_thread(
