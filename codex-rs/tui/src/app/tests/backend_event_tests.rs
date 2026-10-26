@@ -61,6 +61,8 @@ async fn foreign_backend_events_leave_thread_cache_and_connection_untouched() ->
                 rate_limits: serde_json::from_value(
                     serde_json::json!({ "spendControlReached": true }),
                 )?,
+                source_thread_id: None,
+                source_model: None,
             },
         ))),
     ] {
