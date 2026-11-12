@@ -88,6 +88,12 @@ test-group = 'app_server_integration'
 filter = 'package(codex-app-server) & kind(test)'
 test-group = 'app_server_integration_local'
 
+[[profile.local.overrides]]
+# The full side-chat flow measured 68s in a WSL debug run, exceeding the default
+# 60s timeout. Allow concurrency margin for local runs without changing CI.
+filter = 'package(codex-tui) & test(=app::tests::handle_start_side_seeds_navigation_before_thread_started)'
+slow-timeout = { period = "1m", terminate-after = 3 }
+
 [[profile.default.overrides]]
 # These tests exercise full Codex turns and apply_patch execution, and they are
 # sensitive to Windows runner process-startup stalls when many cases launch at once.
