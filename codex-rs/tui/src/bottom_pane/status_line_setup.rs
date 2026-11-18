@@ -23,20 +23,20 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use std::collections::HashSet;
-use strum::IntoEnumIterator;
 use strum_macros::Display;
 use strum_macros::EnumIter;
 use strum_macros::EnumString;
 
 use crate::app_event::AppEvent;
 use crate::app_event_sender::AppEventSender;
+use crate::backend_id::BackendId;
 use crate::bottom_pane::CancellationEvent;
 use crate::bottom_pane::bottom_pane_view::BottomPaneView;
 use crate::bottom_pane::multi_select_picker::MultiSelectItem;
 use crate::bottom_pane::multi_select_picker::MultiSelectPicker;
 use crate::bottom_pane::status_surface_preview::StatusSurfacePreviewData;
 use crate::bottom_pane::status_surface_preview::StatusSurfacePreviewItem;
+use crate::key_hint::KeyBinding;
 use crate::keymap::ListKeymap;
 use crate::render::renderable::Renderable;
 
@@ -178,6 +178,13 @@ pub(crate) enum StatusLineItem {
     Provider,
 }
 
+impl serde::Serialize for StatusLineItem {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // Display emits the canonical config ID even when the item was parsed from an alias.
+        serializer.collect_str(self)
+    }
+}
+
 impl StatusLineItem {
     /// User-visible description shown in the popup.
     pub(crate) fn description(self) -> &'static str {
@@ -208,6 +215,12 @@ impl StatusLineItem {
             StatusLineItem::ContextRemainingPercent => {
                 "Percentage of context window remaining (omitted when unknown)"
             }
+            StatusLineItem::QuotaSummary => {
+                "Compact summary of 5-hour and weekly quota remaining with reset countdowns"
+            }
+            StatusLineItem::SparkQuotaSummary => {
+                "Compact Spark quota remaining with reset countdowns (omitted when unavailable)"
+            }
             StatusLineItem::ContextUsed => {
                 "Percentage of context window used (omitted when unknown)"
             }
@@ -216,12 +229,6 @@ impl StatusLineItem {
             }
             StatusLineItem::WeeklyLimit => {
                 "Remaining usage on the secondary usage limit (omitted when unavailable)"
-            }
-            StatusLineItem::QuotaSummary => {
-                "Compact summary of 5-hour and weekly quota remaining with reset countdowns"
-            }
-            StatusLineItem::SparkQuotaSummary => {
-                "Compact Spark quota remaining with reset countdowns (omitted when unavailable)"
             }
             StatusLineItem::CodexVersion => "Codex application version",
             StatusLineItem::ContextWindowSize => {
@@ -297,6 +304,15 @@ impl StatusLineItem {
     }
 }
 
+pub(crate) enum StatuslineProviderActions {
+    Hidden,
+    Choose,
+    CreateAndChoose {
+        backend: Option<BackendId>,
+        thread_id: Option<codex_protocol::ThreadId>,
+    },
+}
+
 /// Interactive view for configuring which items appear in the status line.
 ///
 /// Wraps a [`MultiSelectPicker`] with status-line-specific behavior:
@@ -310,6 +326,8 @@ pub(crate) struct StatusLineSetupView {
 }
 
 impl StatusLineSetupView {
+    pub(crate) const VIEW_ID: &'static str = "status-line-setup";
+
     /// Creates a new status line setup view.
     ///
     /// # Arguments
@@ -325,48 +343,53 @@ impl StatusLineSetupView {
     pub(crate) fn new(
         status_line_items: Option<&[String]>,
         use_theme_colors: bool,
+        providers: StatuslineProviderActions,
         preview_data: StatusSurfacePreviewData,
         app_event_tx: AppEventSender,
         list_keymap: ListKeymap,
     ) -> Self {
-        let mut used_ids = HashSet::new();
-        let mut items = vec![MultiSelectItem {
+        let mut items = Vec::new();
+        if !matches!(providers, StatuslineProviderActions::Hidden) {
+            items.push(MultiSelectItem {
+                name: "Choose a status line provider".into(),
+                orderable: false,
+                section_break_after: matches!(providers, StatuslineProviderActions::Choose),
+                on_activate: Some(Box::new(|tx, key| {
+                    tx.send(AppEvent::OpenStatuslinePicker(key))
+                })),
+                ..Default::default()
+            });
+        }
+        if let StatuslineProviderActions::CreateAndChoose { backend, thread_id } = providers {
+            items.push(MultiSelectItem {
+                name: "Create a custom status line".into(),
+                orderable: false,
+                section_break_after: true,
+                on_activate: Some(Box::new(move |tx, key| {
+                    tx.send(AppEvent::CreateCustomStatusline {
+                        backend,
+                        thread_id,
+                        key,
+                    })
+                })),
+                ..Default::default()
+            });
+        }
+        items.push(MultiSelectItem {
             id: STATUS_LINE_USE_THEME_COLORS_ITEM_ID.to_string(),
             name: "Use theme colors".to_string(),
             description: Some("Apply colors from the active /theme".to_string()),
             enabled: use_theme_colors,
             orderable: false,
             section_break_after: true,
-        }];
+            on_activate: None,
+        });
 
-        if let Some(selected_items) = status_line_items.as_ref() {
-            for id in *selected_items {
-                let Ok(item) = id.parse::<StatusLineItem>() else {
-                    continue;
-                };
-                let item_id = item.to_string();
-                if !used_ids.insert(item_id.clone()) {
-                    continue;
-                }
-                items.push(Self::status_line_select_item(
-                    item,
-                    /*enabled*/ true,
-                    &preview_data,
-                ));
-            }
-        }
-
-        for item in StatusLineItem::iter() {
-            let item_id = item.to_string();
-            if used_ids.contains(&item_id) {
-                continue;
-            }
-            items.push(Self::status_line_select_item(
-                item,
-                /*enabled*/ false,
-                &preview_data,
-            ));
-        }
+        items.extend(preview_data.picker_items(
+            status_line_items,
+            StatusLineItem::description,
+            |item| Some(item.preview_item()),
+        ));
 
         Self {
             picker: MultiSelectPicker::builder(
@@ -410,35 +433,13 @@ impl StatusLineSetupView {
             .build(),
         }
     }
-
-    /// Converts a [`StatusLineItem`] into a [`MultiSelectItem`] for the picker.
-    fn status_line_select_item(
-        item: StatusLineItem,
-        enabled: bool,
-        preview_data: &StatusSurfacePreviewData,
-    ) -> MultiSelectItem {
-        let default_name = item.to_string();
-        let default_description = item.description();
-        let (name, description) = match item {
-            StatusLineItem::FiveHourLimit | StatusLineItem::WeeklyLimit => (
-                preview_data.rate_limit_item_name(item.preview_item(), &default_name),
-                preview_data.rate_limit_item_description(item.preview_item(), default_description),
-            ),
-            _ => (default_name, default_description.to_string()),
-        };
-
-        MultiSelectItem {
-            id: item.to_string(),
-            name,
-            description: Some(description),
-            enabled,
-            orderable: true,
-            section_break_after: false,
-        }
-    }
 }
 
 impl BottomPaneView for StatusLineSetupView {
+    fn view_id(&self) -> Option<&'static str> {
+        Some(Self::VIEW_ID)
+    }
+
     fn keymap_contexts(&self) -> crate::keymap::KeymapContextSet {
         crate::keymap::KeymapContextSet::new(crate::keymap::KeymapContext::List)
     }
@@ -449,6 +450,15 @@ impl BottomPaneView for StatusLineSetupView {
 
     fn handle_key_event(&mut self, key_event: crossterm::event::KeyEvent) {
         self.picker.handle_key_event(key_event);
+    }
+
+    fn handle_key_event_with_activation_key(
+        &mut self,
+        key_event: crossterm::event::KeyEvent,
+        activation_key: Option<KeyBinding>,
+    ) {
+        self.picker
+            .handle_key_event_with_activation_key(key_event, activation_key);
     }
 
     fn is_complete(&self) -> bool {
@@ -475,14 +485,33 @@ impl Renderable for StatusLineSetupView {
 mod tests {
     use super::*;
     use crate::app_event_sender::AppEventSender;
+    use crate::bottom_pane::multi_select_picker::tests::render_lines;
     use crate::terminal_hyperlinks::HyperlinkLine;
     use insta::assert_snapshot;
     use pretty_assertions::assert_eq;
-    use ratatui::buffer::Buffer;
-    use ratatui::layout::Rect;
     use tokio::sync::mpsc::unbounded_channel;
 
     use crate::app_event::AppEvent;
+
+    #[test]
+    fn configured_aliases_keep_their_first_position() {
+        let configured = ["project", "model-name", "project-name", "invalid"].map(str::to_string);
+        let rows = StatusSurfacePreviewData::default().picker_items(
+            Some(&configured),
+            StatusLineItem::description,
+            |item| Some(item.preview_item()),
+        );
+        let enabled = rows
+            .iter()
+            .filter(|row| row.enabled)
+            .map(|row| row.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(enabled, ["project-name", "model"]);
+        assert_eq!(
+            rows.iter().filter(|row| row.id == "project-name").count(),
+            1
+        );
+    }
 
     #[test]
     fn context_used_accepts_context_usage_legacy_id() {
@@ -498,7 +527,7 @@ mod tests {
     }
 
     #[test]
-    fn context_remaining_is_separate_selectable_id() {
+    fn context_remaining_is_selectable_id() {
         assert_eq!(
             "context-remaining".parse::<StatusLineItem>(),
             Ok(StatusLineItem::ContextRemaining)
@@ -506,18 +535,6 @@ mod tests {
         assert_eq!(
             StatusLineItem::ContextRemaining.to_string(),
             "context-remaining"
-        );
-    }
-
-    #[test]
-    fn context_remaining_percent_is_separate_selectable_id() {
-        assert_eq!(
-            StatusLineItem::ContextRemainingPercent.to_string(),
-            "context-remaining-percent"
-        );
-        assert_eq!(
-            "context-remaining-percent".parse::<StatusLineItem>(),
-            Ok(StatusLineItem::ContextRemainingPercent)
         );
     }
 
@@ -586,6 +603,18 @@ mod tests {
     }
 
     #[test]
+    fn context_remaining_percent_is_separate_selectable_id() {
+        assert_eq!(
+            StatusLineItem::ContextRemainingPercent.to_string(),
+            "context-remaining-percent"
+        );
+        assert_eq!(
+            "context-remaining-percent".parse::<StatusLineItem>(),
+            Ok(StatusLineItem::ContextRemainingPercent)
+        );
+    }
+
+    #[test]
     fn quota_summary_parses_and_renders_in_preview() {
         assert_eq!(StatusLineItem::QuotaSummary.to_string(), "quota-summary");
         assert_eq!(
@@ -604,6 +633,7 @@ mod tests {
             enabled: true,
             orderable: true,
             section_break_after: false,
+            on_activate: None,
         }];
 
         assert_eq!(
@@ -687,6 +717,7 @@ mod tests {
                 enabled: true,
                 orderable: true,
                 section_break_after: false,
+                on_activate: None,
             },
             MultiSelectItem {
                 id: StatusLineItem::CurrentDir.to_string(),
@@ -695,6 +726,7 @@ mod tests {
                 enabled: true,
                 orderable: true,
                 section_break_after: false,
+                on_activate: None,
             },
         ];
 
@@ -714,7 +746,7 @@ mod tests {
     #[test]
     fn preview_uses_placeholders_when_runtime_values_are_missing() {
         let preview_data = StatusSurfacePreviewData::from_iter([(
-            StatusLineItem::ModelName.preview_item(),
+            StatusSurfacePreviewItem::Model,
             "gpt-5".to_string(),
         )]);
         let items = [
@@ -725,6 +757,7 @@ mod tests {
                 enabled: true,
                 orderable: true,
                 section_break_after: false,
+                on_activate: None,
             },
             MultiSelectItem {
                 id: StatusLineItem::GitBranch.to_string(),
@@ -733,6 +766,7 @@ mod tests {
                 enabled: true,
                 orderable: true,
                 section_break_after: false,
+                on_activate: None,
             },
         ];
 
@@ -769,6 +803,7 @@ mod tests {
                 enabled: true,
                 orderable: true,
                 section_break_after: false,
+                on_activate: None,
             },
             MultiSelectItem {
                 id: StatusLineItem::ThreadTitle.to_string(),
@@ -777,6 +812,7 @@ mod tests {
                 enabled: true,
                 orderable: true,
                 section_break_after: false,
+                on_activate: None,
             },
         ];
 
@@ -806,6 +842,7 @@ mod tests {
             let mut view = StatusLineSetupView::new(
                 Some(&[StatusLineItem::PullRequestNumber.to_string()]),
                 use_theme_colors,
+                StatuslineProviderActions::Hidden,
                 preview,
                 AppEventSender::new(tx),
                 crate::keymap::RuntimeKeymap::defaults().list,
@@ -830,6 +867,7 @@ mod tests {
                 StatusLineItem::GitBranch.to_string(),
             ]),
             /*use_theme_colors*/ true,
+            StatuslineProviderActions::Hidden,
             StatusSurfacePreviewData::from_iter([
                 (
                     StatusLineItem::ModelName.preview_item(),
@@ -864,6 +902,7 @@ mod tests {
                 StatusLineItem::EstimatedThreadCost.to_string(),
             ]),
             /*use_theme_colors*/ true,
+            StatuslineProviderActions::Hidden,
             StatusSurfacePreviewData::from_iter([
                 (
                     StatusLineItem::ThreadCredits.preview_item(),
@@ -890,6 +929,7 @@ mod tests {
                 StatusLineItem::CurrentDir.to_string(),
             ]),
             /*use_theme_colors*/ true,
+            StatuslineProviderActions::Hidden,
             StatusSurfacePreviewData::from_iter([
                 (
                     StatusLineItem::Hostname.preview_item(),
@@ -911,29 +951,6 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n")
         );
-    }
-
-    fn render_lines(view: &StatusLineSetupView, width: u16) -> String {
-        let height = view.desired_height(width);
-        let area = Rect::new(0, 0, width, height);
-        let mut buf = Buffer::empty(area);
-        view.render(area, &mut buf);
-
-        (0..area.height)
-            .map(|row| {
-                let mut line = String::new();
-                for col in 0..area.width {
-                    let symbol = buf[(area.x + col, area.y + row)].symbol();
-                    if symbol.is_empty() {
-                        line.push(' ');
-                    } else {
-                        line.push_str(symbol);
-                    }
-                }
-                line
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
     }
 
     fn line_text(content: Option<HyperlinkLine>) -> Option<String> {
